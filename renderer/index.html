@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>출퇴근 점각</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ===================== 키오스크 ===================== -->
+  <main id="kiosk" class="view">
+    <header class="kiosk-top">
+      <div class="biz" id="bizName">우리 호텔</div>
+      <div class="clock">
+        <div id="clockTime" class="clock-time">00:00:00</div>
+        <div id="clockDate" class="clock-date">2026년 1월 1일</div>
+      </div>
+      <button id="btnAdmin" class="gear" title="관리자">⚙</button>
+    </header>
+
+    <section class="kiosk-body">
+      <div class="prompt"><b>근무자를 선택하세요</b> <span class="sub">이름을 누른 뒤 PIN 4자리를 입력하세요</span></div>
+      <div id="empGrid" class="emp-grid"></div>
+      <div id="empEmpty" class="empty hidden">
+        등록된 직원이 없습니다. 우측 상단 <b>⚙ 관리자</b>에서 직원을 먼저 등록하세요.
+      </div>
+    </section>
+  </main>
+
+  <!-- PIN 입력 오버레이 -->
+  <div id="pinOverlay" class="overlay hidden">
+    <div class="pin-card">
+      <button class="x" data-close="pin">✕</button>
+      <div class="pin-name" id="pinName">홍길동</div>
+      <div class="pin-sub">PIN 4자리를 입력하세요</div>
+      <div class="pin-dots" id="pinDots"></div>
+      <div class="pin-error" id="pinError"></div>
+      <div class="keypad" id="keypad"></div>
+    </div>
+  </div>
+
+  <!-- 출근/퇴근 선택 오버레이 -->
+  <div id="actionOverlay" class="overlay hidden">
+    <div class="action-card">
+      <button class="x" data-close="action">✕</button>
+      <div class="action-name" id="actionName">홍길동</div>
+      <div class="action-status" id="actionStatus"></div>
+      <div class="action-buttons">
+        <button id="btnIn" class="big-btn in">출근</button>
+        <button id="btnOut" class="big-btn out">퇴근</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 완료 오버레이 -->
+  <div id="doneOverlay" class="overlay hidden">
+    <div class="done-card">
+      <div class="done-check" id="doneIcon">✓</div>
+      <div class="done-title" id="doneTitle">출근 완료</div>
+      <div class="done-time" id="doneTime">09:01</div>
+      <div class="done-name" id="doneName">홍길동 님</div>
+      <button id="btnCancelPunch" class="cancel-btn">↩ 방금 점각 취소 <span id="cancelCount"></span></button>
+      <button id="btnDoneClose" class="ghost-btn">닫기</button>
+    </div>
+  </div>
+
+  <!-- ===================== 관리자 ===================== -->
+  <main id="admin" class="view hidden">
+    <header class="admin-top">
+      <div class="admin-title">관리자 — <span id="adminBiz">우리 호텔</span></div>
+      <nav class="tabs">
+        <button class="tab active" data-tab="emp">직원관리</button>
+        <button class="tab" data-tab="punch">점각기록</button>
+        <button class="tab" data-tab="pay">근무확인(근무표)</button>
+        <button class="tab" data-tab="settings">설정</button>
+      </nav>
+      <button id="btnExitAdmin" class="exit-btn">잠그고 점각화면으로</button>
+    </header>
+
+    <!-- 관리자 로그인/설정 -->
+    <div id="adminGate" class="gate hidden">
+      <div class="gate-card">
+        <div class="gate-title" id="gateTitle">관리자 로그인</div>
+        <div class="gate-sub" id="gateSub">비밀번호를 입력하세요</div>
+        <input id="gatePw" type="password" class="gate-input" placeholder="비밀번호" autocomplete="off" />
+        <input id="gatePw2" type="password" class="gate-input hidden" placeholder="비밀번호 확인" autocomplete="off" />
+        <div class="gate-error" id="gateError"></div>
+        <button id="gateBtn" class="primary-btn">확인</button>
+        <button id="gateCancel" class="ghost-btn">점각화면으로</button>
+      </div>
+    </div>
+
+    <div id="adminPanels" class="admin-body hidden">
+      <!-- 직원관리 -->
+      <section id="tab-emp" class="panel">
+        <div class="panel-head">
+          <h2>직원관리</h2>
+          <div class="head-actions">
+            <button id="btnImportOps" class="ghost-btn">직원 엑셀 가져오기</button>
+            <button id="btnAddEmp" class="primary-btn">+ 직원 등록</button>
+          </div>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>이름</th><th>사번</th><th>지역</th><th>급여형태</th><th>단가</th><th>근무유형</th><th>PIN</th><th>상태</th><th></th></tr>
+          </thead>
+          <tbody id="empTbody"></tbody>
+        </table>
+      </section>
+
+      <!-- 점각기록 -->
+      <section id="tab-punch" class="panel hidden">
+        <div class="panel-head">
+          <h2>점각기록</h2>
+          <div class="filters">
+            <label>월 <input type="month" id="filterMonth" /></label>
+            <label>직원
+              <select id="filterEmp"><option value="">전체</option></select>
+            </label>
+            <button id="btnReloadPunch" class="ghost-btn">조회</button>
+          </div>
+        </div>
+        <div class="bulk-bar">
+          <span class="bulk-label">과거 점각 일괄등록</span>
+          <label>시작 <input type="date" id="bulkStart" /></label>
+          <label>종료 <input type="date" id="bulkEnd" /></label>
+          <button id="btnBulkTemplate" class="ghost-btn">📋 양식 내보내기</button>
+          <button id="btnBulkImport" class="primary-btn">📥 작성본 가져오기</button>
+          <span class="bulk-hint">양식은 직원마다 탭(시트)이 하나씩 — 각 탭에서 출근·퇴근(HH:MM)만 채워 올리세요. 이미 있는 기록은 자동 제외.</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>근무일</th><th>이름</th><th>출근</th><th>퇴근</th><th>총시간</th><th>비고</th><th>보정</th></tr>
+          </thead>
+          <tbody id="punchTbody"></tbody>
+        </table>
+        <div class="hint">※ 총시간은 휴게·연장·야간 미반영 단순값입니다. 가산수당·휴게공제는 <b>2단계(급여)</b>에서 계산됩니다.</div>
+      </section>
+
+      <!-- 급여 -->
+      <section id="tab-pay" class="panel hidden">
+        <div class="panel-head">
+          <h2>근무 확인 (근무표)</h2>
+          <div class="filters">
+            <label>월 <input type="month" id="payMonth" /></label>
+            <button id="btnImportSchedule" class="ghost-btn">📥 근무표 가져오기</button>
+            <button id="btnViewSchedule" class="ghost-btn">📅 근무표 보기</button>
+            <button id="btnClearSchedule" class="ghost-btn">🗑 근무표 삭제</button>
+            <button id="btnComputePay" class="ghost-btn">계산</button>
+            <button id="btnExportPay" class="primary-btn">엑셀 내보내기</button>
+            <button id="btnClosePay" class="ghost-btn">월마감</button>
+            <button id="btnReopenPay" class="ghost-btn hidden">마감 취소</button>
+            <span id="payClosed" class="pay-closed hidden">🔒 마감됨</span>
+          </div>
+        </div>
+        <div id="schedStatus" class="hint" style="margin-top:0"></div>
+        <div id="schedView" style="margin:8px 0 4px"></div>
+        <table class="data-table">
+          <thead>
+            <tr><th>이름</th><th>형태</th><th>정상</th><th>연장</th><th>야간</th><th>휴일</th><th>지각</th><th>조퇴</th><th>결근</th><th>주휴</th><th>가산수당(참고)</th><th>비고</th></tr>
+          </thead>
+          <tbody id="payTbody"></tbody>
+        </table>
+        <div class="hint">시간 단위는 시간(h), 금액은 통상시급 기준 <b>참고(예상)</b>입니다. 확정 급여·공제·4대보험은 운영관리/대행사가 처리합니다. <b>근태 엑셀 내보내기</b>로 저장해 운영관리 ‘근무표 가져오기’에 반영하세요 — 연장/야간/휴일 ‘시간’이 핵심 전달값입니다.</div>
+      </section>
+
+      <!-- 설정 -->
+      <section id="tab-settings" class="panel hidden">
+        <div class="panel-head"><h2>설정</h2></div>
+        <div class="settings-grid">
+          <label>사업장명 <input id="setBiz" type="text" /></label>
+          <label>상시 5인 이상
+            <select id="setFive"><option value="true">예 (가산수당 적용)</option><option value="false">아니오</option></select>
+          </label>
+          <label>점각 취소 허용(초) <input id="setCancel" type="number" min="0" max="600" /></label>
+          <label class="switch-row">
+            <span>키오스크 잠금(전체화면·종료차단)</span>
+            <input id="setKiosk" type="checkbox" />
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button id="btnSaveSettings" class="primary-btn">설정 저장</button>
+          <button id="btnChangePw" class="ghost-btn">관리자 비밀번호 변경</button>
+        </div>
+        <hr />
+        <div class="panel-head"><h3>공휴일 (휴일근로 가산 기준)</h3></div>
+        <div id="holList" class="hol-list"></div>
+        <div class="hol-add">
+          <input type="date" id="holDate" />
+          <input type="text" id="holName" placeholder="명칭 (예: 추석)" />
+          <button id="btnAddHol" class="ghost-btn">추가</button>
+          <button id="btnSaveHol" class="primary-btn">공휴일 저장</button>
+        </div>
+        <div class="hint">설날·추석·부처님오신날·대체공휴일은 해마다 날짜가 바뀌니 <b>확인 후 보정</b>하세요. 직원이 이 날 근무하면 휴일근로 가산이 적용됩니다.</div>
+        <hr />
+        <div class="panel-head"><h3>데이터 · 백업 · 무결성</h3></div>
+        <div class="settings-actions">
+          <button id="btnBackup" class="ghost-btn">지금 백업</button>
+          <button id="btnOpenData" class="ghost-btn">데이터 폴더 열기</button>
+          <button id="btnOpenBackup" class="ghost-btn">백업 폴더 열기</button>
+          <button id="btnIntegrity" class="ghost-btn">위변조 검사</button>
+        </div>
+        <div id="integrityResult" class="integrity"></div>
+        <div class="hint">데이터는 PC 사용자 폴더에 저장되며 30분마다 자동 백업됩니다. 수정 전에는 항상 <b>백업 폴더를 외장/클라우드에 복사</b>해 두세요.</div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 직원 등록/수정 모달 -->
+  <div id="empModal" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><span id="empModalTitle">직원 등록</span><button class="x" data-close="emp">✕</button></div>
+      <div class="modal-body">
+        <label>이름 *<input id="em_name" type="text" /></label>
+        <label>사번<input id="em_empNo" type="text" /></label>
+        <label>지역<input id="em_region" type="text" placeholder="예: 평택 / 속초" /></label>
+        <label>부서/직책<input id="em_dept" type="text" /></label>
+        <label>급여형태
+          <select id="em_payType">
+            <option value="hourly">시급제</option>
+            <option value="monthly">월급제</option>
+          </select>
+        </label>
+        <label id="lbl_hourly">시급(원)<input id="em_hourly" type="number" min="0" step="10" /></label>
+        <label id="lbl_monthly" class="hidden">월 기본급(원)<input id="em_monthly" type="number" min="0" step="1000" /></label>
+        <label>근무형태
+          <select id="em_schedType">
+            <option value="fixed">고정</option>
+            <option value="shift">교대(야간 포함)</option>
+          </select>
+        </label>
+        <label class="full" id="lbl_workdays">근무요일 (결근·주휴 판정 / 교대는 무시)
+          <div class="weekdays" id="em_workdays">
+            <label><input type="checkbox" data-wd="1" />월</label>
+            <label><input type="checkbox" data-wd="2" />화</label>
+            <label><input type="checkbox" data-wd="3" />수</label>
+            <label><input type="checkbox" data-wd="4" />목</label>
+            <label><input type="checkbox" data-wd="5" />금</label>
+            <label><input type="checkbox" data-wd="6" />토</label>
+            <label><input type="checkbox" data-wd="0" />일</label>
+          </div>
+        </label>
+        <div class="two" id="lbl_shift">
+          <label>소정 출근<input id="em_start" type="time" value="09:00" /></label>
+          <label>소정 퇴근<input id="em_end" type="time" value="18:00" /></label>
+        </div>
+        <div id="schedNote" class="hint hidden">교대 근무는 <b>근무표(편성)</b>의 일자별 예정시각을 사용합니다 — 위 소정시각·근무요일은 적용되지 않습니다. 운영관리에서 ‘📤 점각용 내보내기’ → 급여 탭 ‘📥 근무표(예정) 가져오기’.</div>
+        <label>1일 무급 휴게(분)<input id="em_break" type="number" min="0" step="10" value="60" /></label>
+        <label class="full switch-row" style="font-size:13px"><span>근무표에서 제외 (근무확인 화면에 안 보이게)</span><input type="checkbox" id="em_exclSched" /></label>
+        <label id="lbl_pin">PIN(숫자 4자리) *<input id="em_pin" type="text" inputmode="numeric" maxlength="4" placeholder="신규 등록 시 필수" /></label>
+        <div id="em_pinNote" class="hint hidden">PIN을 바꾸려면 새 4자리를 입력하세요. 비워두면 기존 PIN 유지.</div>
+        <div class="modal-error" id="empModalError"></div>
+      </div>
+      <div class="modal-foot">
+        <button id="btnDeactivate" class="danger-btn hidden">퇴사 처리</button>
+        <span class="spacer"></span>
+        <button id="btnSaveEmp" class="primary-btn">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 점각 보정 모달 -->
+  <div id="corrModal" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><span id="corrTitle">점각 보정</span><button class="x" data-close="corr">✕</button></div>
+      <div class="modal-body" style="display:block">
+        <div id="corrClosedNote" class="hint hidden" style="color:var(--danger);margin-top:0">이 달은 월마감되어 보정할 수 없습니다. 급여 탭에서 ‘마감 취소’ 후 진행하세요.</div>
+        <div id="corrPunches"></div>
+        <div class="corr-add">
+          <select id="corrAddType"><option value="in">출근</option><option value="out">퇴근</option></select>
+          <input type="datetime-local" id="corrAddTime" />
+          <button id="corrAddBtn" class="ghost-btn">누락 점각 추가</button>
+        </div>
+        <label style="display:block;margin-top:14px;font-size:13px;color:#475569;font-weight:600">보정 사유 (필수)
+          <input id="corrReason" type="text" placeholder="예: 퇴근 미점각, CCTV 확인 18:00 퇴근" style="width:100%;margin-top:6px;padding:9px 11px;border:1px solid var(--line);border-radius:9px" />
+        </label>
+        <div class="hint" style="margin-top:8px">원본 점각은 보존되고 보정 기록만 쌓입니다(감사로그). 시각을 바꾸려면 시간을 고치고 ‘시각저장’을 누르세요.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+{
+  "name": "attendance-clock",
+  "version": "1.2.2",
+  "description": "호텔 직원 출퇴근 점각·근태 관리 데스크탑 앱 (공용 PC 키오스크 + 관리자)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.hotel.attendance",
+    "productName": "출퇴근점각",
+    "files": [
+      "main.js",
+      "preload.js",
+      "calc.js",
+      "renderer/**/*",
+      "seed.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

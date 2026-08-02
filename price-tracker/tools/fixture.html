@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>검색 결과 픽스처</title>
+  </head>
+  <body>
+    <!-- 야놀자 검색 결과 페이지의 구조를 흉내 낸 오프라인 픽스처.
+         실제 사이트에 접속하지 않고 추출기 동작을 확인하는 용도. -->
+    <div class="SearchResultList">
+      <ul>
+        <li>
+          <a href="/hotel/1001">
+            <div class="thumb">사진</div>
+            <div class="name">속초 굿모닝 호텔</div>
+            <div class="grade">평점 9.2</div>
+            <div class="price"><span class="origin">150,000원</span><span class="sale">98,000원</span></div>
+          </a>
+        </li>
+        <li>
+          <a href="/hotel/1002">
+            <div class="name">속초 오션뷰 리조트</div>
+            <div class="grade">평점 8.8</div>
+            <div class="price">210,000원</div>
+          </a>
+        </li>
+        <li>
+          <a href="/pension/1003">
+            <div class="name">해수욕장 앞 펜션</div>
+            <div class="price">75,000원</div>
+          </a>
+        </li>
+        <li>
+          <a href="/hotel/1004">
+            <div class="name">설악 비치 호텔</div>
+            <div class="price">132,000원</div>
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <script id="__NEXT_DATA__" type="application/json">
+      {
+        "props": {
+          "pageProps": {
+            "searchResult": {
+              "items": [
+                { "name": "속초굿모닝호텔", "price": 98000, "discountRate": 35, "place": { "id": 1001 } },
+                { "name": "속초 오션뷰 리조트", "salePrice": "210000" },
+                { "name": "무시대상", "discountRate": 20 }
+              ]
+            }
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

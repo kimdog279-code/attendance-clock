@@ -1,0 +1,6 @@
+# 비밀키·계좌정보 — 절대 커밋 금지
+config.json
+.token-cache.json
+
+node_modules/
+data/

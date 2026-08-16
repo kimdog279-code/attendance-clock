@@ -47,6 +47,9 @@ cp config.example.json config.json
 node src/cli.js price 005930              # 삼성전자 현재가
 node src/cli.js daily 005930 20250101     # 일봉 (시작일부터 오늘까지, 최대 100건)
 node src/cli.js balance                   # 계좌 잔고·평가손익
+node src/cli.js collect 005930 20200101   # 일봉 수집 → data/daily/005930.json
+node src/cli.js backtest 005930           # SMA 5/20 크로스 백테스트
+node src/cli.js backtest 005930 10 60     # 단기/장기 기간 변경
 node src/cli.js buy 005930 1              # 시장가 1주 매수 (모의투자)
 node src/cli.js buy 005930 1 60000        # 지정가 매수
 node src/cli.js sell 005930 1             # 시장가 매도
@@ -63,14 +66,17 @@ src/
     quotations.js   현재가·일봉 조회
     orders.js       매수/매도 주문 (실전 주문 안전장치 포함)
     balance.js      잔고·평가손익 조회
+  store.js          일봉 로컬 저장소 (data/daily/<종목코드>.json, 병합·중복 제거)
+  collect.js        일봉 수집기 (100건 제한을 기간 분할 반복 조회로 우회, 호출 제한 대기)
+  backtest.js       백테스팅 엔진 (SMA 크로스, 다음 날 시가 체결, 수수료·거래세·MDD)
   cli.js            커맨드라인 진입점
 ```
 
 ## 로드맵
 
 - [x] **1단계 — API 연동 기초**: 토큰 발급/캐시, 현재가·일봉 조회, 잔고 조회, 모의투자 주문
-- [ ] **2단계 — 데이터 수집**: 일봉/분봉을 SQLite에 적재하는 수집기 (`daily`는 1회 최대 100건이므로 기간 분할 반복 조회 필요)
-- [ ] **3단계 — 백테스팅**: 이동평균 교차 등 기본 전략 + 수수료·거래세·슬리피지 반영, 수익률/MDD 리포트
+- [x] **2단계 — 데이터 수집**: 일봉 수집기 (`collect`) — 기간 분할 반복 조회, JSON 적재 (분봉이 필요해지면 SQLite로 확장)
+- [x] **3단계 — 백테스팅**: SMA 골든/데드크로스 (`backtest`) — 다음 날 시가 체결, 수수료·거래세 반영, 수익률/단순보유 비교/MDD/승률
 - [ ] **4단계 — 실시간 시세**: WebSocket(`ops.koreainvestment.com`) 실시간 체결가 수신
 - [ ] **5단계 — 자동매매 엔진**: 전략 신호 → 주문 실행, 미체결 관리, 중복 주문 방지, 장 운영시간 처리, 로깅/알림
 - [ ] **6단계 — 실전 전환**: 모의투자 수 주 이상 안정 운영 후 소액으로 시작

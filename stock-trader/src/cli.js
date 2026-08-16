@@ -10,6 +10,9 @@ import { loadConfig } from "./config.js";
 import { getPrice, getDailyChart } from "./api/quotations.js";
 import { buy, sell } from "./api/orders.js";
 import { getBalance } from "./api/balance.js";
+import { collectDaily } from "./collect.js";
+import { loadDaily } from "./store.js";
+import { smaCross } from "./backtest.js";
 
 const won = (n) => Number(n).toLocaleString("ko-KR");
 
@@ -54,6 +57,40 @@ async function main() {
       break;
     }
 
+    case "collect": {
+      const [code, from] = args;
+      if (!code) return usage();
+      console.log(`${code} 일봉 수집 시작 (${from ?? "20200101"}부터)`);
+      const result = await collectDaily(code, from);
+      console.log(`\n수집 ${result.fetched}건, 저장된 총 데이터 ${result.total}건`);
+      break;
+    }
+
+    case "backtest": {
+      const [code, shortPeriod, longPeriod] = args;
+      if (!code) return usage();
+      const candles = loadDaily(code);
+      if (candles.length === 0) {
+        console.log(`저장된 데이터가 없습니다. 먼저 실행: node src/cli.js collect ${code}`);
+        break;
+      }
+      const r = smaCross(candles, {
+        shortPeriod: shortPeriod ? Number(shortPeriod) : 5,
+        longPeriod: longPeriod ? Number(longPeriod) : 20,
+      });
+      const pct = (x) => (x * 100).toFixed(2) + "%";
+      console.log(`전략: SMA ${shortPeriod ?? 5}/${longPeriod ?? 20} 골든/데드크로스 (다음 날 시가 체결, 수수료·거래세 반영)`);
+      console.log(`기간: ${r.period} (${candles.length}일)\n`);
+      console.log(`전략 수익률:     ${pct(r.totalReturn)}  (${won(r.initialCash)}원 → ${won(r.finalEquity)}원)`);
+      console.log(`단순보유 수익률: ${pct(r.buyHoldReturn)}`);
+      console.log(`최대낙폭(MDD):   ${pct(r.maxDrawdown)}`);
+      console.log(`매매 횟수: ${r.tradeCount}회, 승률: ${r.winRate == null ? "-" : pct(r.winRate)}`);
+      if (r.openPosition) {
+        console.log(`미청산 보유: ${won(r.openPosition.qty)}주 (종가 ${won(r.openPosition.lastClose)}원 기준 평가)`);
+      }
+      break;
+    }
+
     case "buy":
     case "sell": {
       const [code, qty, price] = args;
@@ -76,6 +113,8 @@ function usage() {
       "  node src/cli.js price <종목코드>",
       "  node src/cli.js daily <종목코드> [시작일 YYYYMMDD] [종료일 YYYYMMDD]",
       "  node src/cli.js balance",
+      "  node src/cli.js collect <종목코드> [시작일 YYYYMMDD]",
+      "  node src/cli.js backtest <종목코드> [단기SMA=5] [장기SMA=20]",
       "  node src/cli.js buy <종목코드> <수량> [지정가]",
       "  node src/cli.js sell <종목코드> <수량> [지정가]",
     ].join("\n")

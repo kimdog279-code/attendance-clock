@@ -49,6 +49,8 @@ export function loadConfig() {
     cano,
     acntPrdtCd,
     allowRealOrders: raw.allowRealOrders === true,
+    // 실전 주문 1건당 최대 금액(원). 실수로 큰 주문이 나가는 것을 막는다.
+    maxOrderAmount: Number(raw.maxOrderAmount ?? 100000),
     root: ROOT,
   };
   return cached;

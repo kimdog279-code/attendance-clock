@@ -3,6 +3,7 @@
 //  - 모의투자에서 충분히 검증하기 전에는 allowRealOrders를 켜지 말 것.
 import { loadConfig } from "../config.js";
 import { kisRequest, trIdFor } from "../kisClient.js";
+import { getPrice } from "./quotations.js";
 
 const ORD_DVSN = { limit: "00", market: "01" };
 
@@ -13,6 +14,19 @@ async function placeOrder({ side, stockCode, qty, price }) {
       "실전투자 모드에서 주문이 차단되었습니다. " +
         "정말 실제 주문을 내려면 config.json에서 allowRealOrders를 true로 설정하세요."
     );
+  }
+
+  // 실전 모드: 주문 1건당 금액 상한 검사 (시장가는 현재가로 추정)
+  if (config.mode === "real" && config.maxOrderAmount > 0) {
+    const unitPrice = price ?? (await getPrice(stockCode)).price;
+    const estimated = unitPrice * qty;
+    if (estimated > config.maxOrderAmount) {
+      throw new Error(
+        `주문 금액 약 ${estimated.toLocaleString("ko-KR")}원이 상한선 ` +
+          `${config.maxOrderAmount.toLocaleString("ko-KR")}원을 초과합니다. ` +
+          "의도한 주문이 맞다면 config.json의 maxOrderAmount를 조정하세요."
+      );
+    }
   }
 
   const isMarketOrder = price == null;

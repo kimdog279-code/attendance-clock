@@ -26,6 +26,18 @@ cp config.example.json config.json
 | `mode` | `"paper"`(모의투자) 또는 `"real"`(실전). 모의/실전은 **앱 키가 서로 다르니** 모드에 맞는 키를 넣어야 합니다. |
 | `accountNo` | `"계좌번호8자리-01"` 형식 |
 | `allowRealOrders` | `false`면 실전 모드에서도 주문이 차단됩니다 (조회는 가능) |
+| `maxOrderAmount` | 실전 주문 1건당 최대 금액(원). 기본 10만원. `0`이면 상한 없음 (권장하지 않음) |
+
+## 실전 모드로 전환하기
+
+1. KIS Developers 포털에서 **실전투자용** API를 신청해 실전용 APP Key / Secret을 발급받으세요 (모의투자 키와 별개).
+2. `config.json`에서 `mode`를 `"real"`로 바꾸고 실전용 키를 입력하세요.
+3. 이 상태에서 시세·잔고 **조회**는 자유롭게 됩니다. 주문은 아직 차단 상태입니다.
+4. 실제 주문까지 내려면 `allowRealOrders`를 `true`로 바꾸세요. 이때도 1건당 `maxOrderAmount`(기본 10만원)를 넘는 주문은 차단됩니다.
+
+> 자동매매 엔진(5단계)이 완성되기 전까지는 `allowRealOrders`를 켜더라도
+> CLI로 직접 내리는 수동 주문만 사용하세요. 검증 안 된 코드에 실전 주문 권한을
+> 연결하는 것이 자동매매에서 돈을 잃는 가장 흔한 경로입니다.
 
 `config.json`과 토큰 캐시(`.token-cache.json`)는 `.gitignore`에 등록되어 있어 커밋되지 않습니다. **앱 키를 절대 깃에 올리지 마세요.**
 

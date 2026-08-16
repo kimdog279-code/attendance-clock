@@ -3,5 +3,6 @@
   "appKey": "발급받은 APP Key",
   "appSecret": "발급받은 APP Secret",
   "accountNo": "12345678-01",
-  "allowRealOrders": false
+  "allowRealOrders": false,
+  "maxOrderAmount": 100000
 }

@@ -16,8 +16,9 @@ function dayBefore(yyyymmdd) {
 
 export async function collectDaily(stockCode, from = "20200101") {
   const config = loadConfig();
-  // 호출 제한: 모의투자 초당 2건, 실전 초당 20건 — 여유 있게 대기
-  const waitMs = config.mode === "paper" ? 600 : 100;
+  // 호출 제한: 모의투자 초당 2건, 실전 초당 20건 — 넉넉히 대기
+  // (경계에 걸리는 경우가 있어 모의투자는 1.1초로 여유 있게)
+  const waitMs = config.mode === "paper" ? 1100 : 150;
 
   let to = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   const collected = [];

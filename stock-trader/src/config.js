@@ -51,7 +51,8 @@ export function loadConfig() {
 
   cached = {
     mode,
-    baseUrl: BASE_URLS[mode],
+    // KIS_BASE_URL 환경변수는 테스트용 목(mock) 서버를 붙일 때만 사용
+    baseUrl: process.env.KIS_BASE_URL ?? BASE_URLS[mode],
     appKey: raw.appKey,
     appSecret: raw.appSecret,
     cano,

@@ -3,6 +3,9 @@
 import { loadConfig } from "./config.js";
 import { getAccessToken } from "./token.js";
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const MAX_RATE_LIMIT_RETRIES = 5;
+
 export async function kisRequest({ method = "GET", path, trId, params, body }) {
   const config = loadConfig();
   const token = await getAccessToken();
@@ -12,26 +15,43 @@ export async function kisRequest({ method = "GET", path, trId, params, body }) {
     url.searchParams.set(key, value);
   }
 
-  const res = await fetch(url, {
-    method,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      authorization: `Bearer ${token}`,
-      appkey: config.appKey,
-      appsecret: config.appSecret,
-      tr_id: trId,
-      custtype: "P",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        authorization: `Bearer ${token}`,
+        appkey: config.appKey,
+        appsecret: config.appSecret,
+        tr_id: trId,
+        custtype: "P",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
 
-  const data = await res.json();
-  if (!res.ok || data.rt_cd !== "0") {
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+
+    if (res.ok && data.rt_cd === "0") return data;
+
+    // 초당 호출 한도 초과(EGW00201)는 일시적 오류 — 잠시 기다렸다가 재시도
+    const rateLimited =
+      data.msg_cd === "EGW00201" || (data.msg1 ?? "").includes("초당 거래건수");
+    if (rateLimited && attempt < MAX_RATE_LIMIT_RETRIES) {
+      const waitMs = 1000 * (attempt + 1);
+      console.log(`  (호출 한도 도달 — ${waitMs / 1000}초 쉬었다가 다시 시도합니다)`);
+      await sleep(waitMs);
+      continue;
+    }
+
     throw new Error(
       `KIS API 오류 [${trId}] HTTP ${res.status} rt_cd=${data.rt_cd ?? "?"} ${data.msg1 ?? ""}`.trim()
     );
   }
-  return data;
 }
 
 // 모의투자(paper)와 실전(real)은 같은 API라도 tr_id가 다르다.

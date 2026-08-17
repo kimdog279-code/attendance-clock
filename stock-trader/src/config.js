@@ -91,10 +91,16 @@ export function loadConfig() {
     cano,
     acntPrdtCd,
     allowRealOrders: raw.allowRealOrders === true,
+    // 실전 자동매매 허용 (allowRealOrders와 함께 켜져야 동작)
+    allowRealAutoTrade: raw.allowRealAutoTrade === true,
     // 실전 주문 1건당 최대 금액(원). 실수로 큰 주문이 나가는 것을 막는다.
     maxOrderAmount: Number(raw.maxOrderAmount ?? 100000),
     // 자동매매가 매수 1회에 쓸 예산(원)
     autoTradeBudget: Number(raw.autoTradeBudget ?? 1000000),
+    // 실전 자동매매: 하루 실현 손실이 이 금액을 넘으면 그날 자동매매 정지
+    dailyLossLimit: Number(raw.dailyLossLimit ?? 100000),
+    // 실전 자동매매: 하루 최대 주문 횟수 (신규 매수 제한, 매도는 항상 허용)
+    maxDailyOrders: Number(raw.maxDailyOrders ?? 6),
     root: ROOT,
   };
   return cached;

@@ -90,10 +90,19 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
   const stratParams = strategy?.params ?? { short: 5, long: 20 };
   const strat = STRATEGIES[stratId];
 
-  if (live && config.mode === "real") {
-    log("⚠ 실전투자 모드에서는 자동 주문을 지원하지 않습니다. 연습 모드로 전환합니다.");
+  const realLive = live && config.mode === "real";
+  if (realLive && (!config.allowRealOrders || !config.allowRealAutoTrade)) {
+    log(
+      "⚠ 실전 자동 주문이 잠겨 있습니다. [⚠ 실전 안전장치]에서 " +
+        "'실전 주문 허용'과 '실전 자동매매 허용'을 모두 켜야 합니다. 연습 모드로 전환합니다."
+    );
     live = false;
   }
+  // 실전 자동매매의 매수 1회 예산: 자동매매 예산과 1건 상한 중 작은 쪽
+  const buyBudget =
+    config.mode === "real" && config.maxOrderAmount > 0
+      ? Math.min(config.autoTradeBudget, config.maxOrderAmount)
+      : config.autoTradeBudget;
 
   let stopped = false;
   stopPromise.then(() => {
@@ -109,8 +118,17 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
   const { getPrice } = await import("./api/quotations.js");
   const state = loadState(code);
 
-  log(`\n자동매매 시작 — ${code}, ${live ? "🟢 모의주문 실행 모드" : "🔵 연습 모드(신호만)"}`);
+  log(
+    `\n자동매매 시작 — ${code}, ${
+      live ? (config.mode === "real" ? "🚨 실전 주문 실행 모드 (진짜 돈!)" : "🟢 모의주문 실행 모드") : "🔵 연습 모드(신호만)"
+    }`
+  );
   log(`전략: ${strat.label(stratParams)}, ${pollMs / 1000}초마다 확인`);
+  if (live && config.mode === "real") {
+    log(
+      `안전장치: 하루 손실 한도 ${won(config.dailyLossLimit)}원 · 하루 최대 ${config.maxDailyOrders}회 주문 · 매수 1회 ${won(buyBudget)}원`
+    );
+  }
   log(`보유 상태: ${state.position ? `${won(state.position.qty)}주 보유 중` : "없음"}`);
   logLine(`엔진 시작 ${code} (${live ? "주문 실행" : "연습"})`);
 
@@ -123,6 +141,23 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       }
 
       const today = kst().dateStr;
+
+      // 실전 자동매매 일일 안전장치
+      if (live && config.mode === "real") {
+        if (state.dayStats?.date !== today) {
+          state.dayStats = { date: today, orders: 0, pnl: 0 };
+          saveState(code, state);
+        }
+        if (config.dailyLossLimit > 0 && state.dayStats.pnl <= -config.dailyLossLimit) {
+          log(
+            `🛑 오늘 실현 손실 ${won(Math.round(-state.dayStats.pnl))}원이 하루 한도(${won(config.dailyLossLimit)}원)에 도달해 자동매매를 멈춥니다.` +
+              (state.position ? " 보유 포지션은 그대로 남아 있으니 직접 확인하세요." : "")
+          );
+          logLine(`하루 손실 한도 도달로 정지 (${Math.round(state.dayStats.pnl)}원)`);
+          break;
+        }
+      }
+
       const history = loadDaily(code).filter((c) => c.date < today);
       const p = await getPrice(code);
       const quote = { price: p.price, open: p.open, today };
@@ -146,12 +181,15 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
         state.lastSignal = { date: today, type: "buy" };
         if (live) {
           const { buy } = await import("./api/orders.js");
-          const qty = Math.floor(config.autoTradeBudget / p.price);
-          if (qty < 1) {
-            log(`🔔 매수 신호! 하지만 예산(${won(config.autoTradeBudget)}원)으로 1주도 살 수 없어 건너뜁니다.`);
+          const qty = Math.floor(buyBudget / p.price);
+          if (config.mode === "real" && state.dayStats.orders >= config.maxDailyOrders) {
+            log(`⏸ 매수 신호가 왔지만 오늘 주문 한도(${config.maxDailyOrders}회)에 도달해 신규 매수를 건너뜁니다.`);
+          } else if (qty < 1) {
+            log(`🔔 매수 신호! 하지만 예산(${won(buyBudget)}원)으로 1주도 살 수 없어 건너뜁니다.`);
           } else {
             const r = await buy(code, qty);
             state.position = { qty, entryPrice: p.price, date: today };
+            if (config.mode === "real") state.dayStats.orders++;
             log(`🟢 매수 주문 실행! ${qty}주 (주문번호 ${r.orderNo})`);
             logLine(`매수 주문 ${code} ${qty}주 @ ${p.price}`);
           }
@@ -171,6 +209,13 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
             log("🔔 매도 신호! 하지만 계좌에 이 종목이 없어 건너뜁니다.");
           } else {
             const r = await sell(code, holding.qty);
+            if (config.mode === "real") {
+              state.dayStats.orders++;
+              // 실현 손익 추정치를 하루 한도 계산에 반영 (수수료·거래세 근사 포함)
+              const qty = Math.min(holding.qty, state.position?.qty || holding.qty);
+              const entry = state.position?.entryPrice ?? holding.avgPrice;
+              state.dayStats.pnl += (p.price * (1 - 0.00165) - entry * (1 + 0.00015)) * qty;
+            }
             log(`🔴 매도 주문 실행! ${holding.qty}주 (주문번호 ${r.orderNo})`);
             logLine(`매도 주문 ${code} ${holding.qty}주 @ ${p.price}`);
           }

@@ -125,9 +125,23 @@
           <input type="number" id="setMax" style="width: 110px" step="10000" min="0" />
           <span class="hint">원 (초과 주문은 자동 차단, 0 = 상한 없음)</span>
         </div>
+        <hr style="border: none; border-top: 1px solid var(--grid); margin: 12px 0" />
+        <div class="row" style="margin-bottom: 10px">
+          <label><input type="checkbox" id="setAllowAuto" /> <b>실전 자동매매 허용</b></label>
+          <span class="hint">— 자동매매가 실전 계좌에 직접 주문합니다 (모의 검증 후 켜세요)</span>
+        </div>
+        <div class="row" style="margin-bottom: 10px">
+          <span class="hint">하루 실현 손실이</span>
+          <input type="number" id="setLossLimit" style="width: 110px" step="10000" min="10000" />
+          <span class="hint">원을 넘으면 그날 자동매매 자동 정지</span>
+        </div>
+        <div class="row" style="margin-bottom: 10px">
+          <span class="hint">하루 최대</span>
+          <input type="number" id="setMaxOrders" style="width: 70px" min="1" max="100" />
+          <span class="hint">회 주문 (신규 매수 제한, 매도는 항상 허용)</span>
+        </div>
         <div class="row">
           <button class="small" id="btnSaveSafety">저장</button>
-          <span class="hint">실전 모드에서 자동매매는 신호 알림만 하며 자동 주문은 지원하지 않습니다.</span>
         </div>
         <div class="msg" id="safetyMsg"></div>
       </div>

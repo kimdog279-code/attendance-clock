@@ -58,13 +58,22 @@ async function init() {
   $("#safetyCard").classList.toggle("hidden", MODE !== "real");
   if (MODE === "real") {
     $("#setAllow").checked = st.settings.allowRealOrders;
+    $("#setAllowAuto").checked = st.settings.allowRealAutoTrade;
     $("#setMax").value = st.settings.maxOrderAmount;
+    $("#setLossLimit").value = st.settings.dailyLossLimit;
+    $("#setMaxOrders").value = st.settings.maxDailyOrders;
+
     const liveRadio = document.querySelector('input[name="engMode"][value="live"]');
-    liveRadio.disabled = true;
     const liveLabel = liveRadio.closest("label");
-    liveLabel.style.opacity = "0.55";
-    liveLabel.innerHTML =
-      '<input type="radio" name="engMode" value="live" disabled /> 자동 주문 🔒 — 실전은 모의투자 검증 후 지원 (모의 모드에서는 사용 가능)';
+    const unlocked = st.settings.allowRealOrders && st.settings.allowRealAutoTrade;
+    if (unlocked) {
+      liveLabel.innerHTML = '<input type="radio" name="engMode" value="live" /> 자동 주문 (🚨 실전 — 진짜 돈)';
+    } else {
+      liveRadio.disabled = true;
+      liveLabel.style.opacity = "0.55";
+      liveLabel.innerHTML =
+        '<input type="radio" name="engMode" value="live" disabled /> 자동 주문 🔒 — 아래 [⚠ 실전 안전장치]에서 두 허용 스위치를 켜면 열립니다';
+    }
   }
 
   refreshAll();
@@ -435,7 +444,11 @@ $("#btnEngine").addEventListener("click", async () => {
     } else {
       const live = document.querySelector('input[name="engMode"]:checked').value === "live";
       const strat = selectedEngineStrategy();
-      if (live && !confirm(`주문 실행 모드입니다.\n전략: ${strat.label}\n신호가 오면 모의투자 계좌에 진짜 주문이 나갑니다. 시작할까요?`)) return;
+      const liveConfirm =
+        MODE === "real"
+          ? `🚨 실전 자동매매를 시작합니다 — 진짜 돈입니다!\n전략: ${strat.label}\n종목: ${currentCode}\n\n신호가 오면 사람 확인 없이 실전 계좌에 주문이 나갑니다.\n하루 손실 한도에 도달하면 자동으로 멈춥니다.\n\n시작할까요?`
+          : `주문 실행 모드입니다.\n전략: ${strat.label}\n신호가 오면 모의투자 계좌에 진짜 주문이 나갑니다. 시작할까요?`;
+      if (live && !confirm(liveConfirm)) return;
       await api("/api/engine/start", {
         method: "POST",
         body: { code: currentCode, live, strategy: { id: strat.id, params: strat.params } },
@@ -622,17 +635,39 @@ $("#btnBackToPaper").addEventListener("click", async () => {
 $("#btnSaveSafety").addEventListener("click", async () => {
   const msg = $("#safetyMsg");
   const allow = $("#setAllow").checked;
+  const allowAuto = $("#setAllowAuto").checked;
   if (allow && !confirm("⚠ 실전 주문 허용을 켭니다.\n이제 매수/매도 버튼이 진짜 돈으로 주문을 냅니다.\n(1건당 상한과 확인창은 계속 적용됩니다)\n켤까요?")) {
     $("#setAllow").checked = false;
+    return;
+  }
+  if (allowAuto && !confirm(
+    "🚨🚨 실전 자동매매를 허용합니다 🚨🚨\n\n" +
+    "자동매매를 '자동 주문'으로 시작하면, 프로그램이 사람 확인 없이\n" +
+    "실전 계좌에 매수·매도 주문을 냅니다.\n\n" +
+    "적용되는 안전장치:\n" +
+    `· 매수 1회 예산: 자동매매 예산과 1건 상한 중 작은 금액\n` +
+    `· 하루 손실 한도 초과 시 그날 자동 정지\n` +
+    `· 하루 주문 횟수 제한\n\n정말 켤까요?`)) {
+    $("#setAllowAuto").checked = false;
     return;
   }
   try {
     const r = await api("/api/settings", {
       method: "POST",
-      body: { allowRealOrders: allow, maxOrderAmount: Number($("#setMax").value) },
+      body: {
+        allowRealOrders: allow,
+        allowRealAutoTrade: allowAuto,
+        maxOrderAmount: Number($("#setMax").value),
+        dailyLossLimit: Number($("#setLossLimit").value),
+        maxDailyOrders: Number($("#setMaxOrders").value),
+      },
     });
     msg.className = "msg ok";
-    msg.textContent = `저장됨 — 주문 ${r.allowRealOrders ? "허용" : "차단"}, 1건 상한 ${r.maxOrderAmount === 0 ? "없음" : Number(r.maxOrderAmount).toLocaleString("ko-KR") + "원"}`;
+    msg.textContent =
+      `저장됨 — 주문 ${r.allowRealOrders ? "허용" : "차단"} · 자동매매 ${r.allowRealAutoTrade ? "허용" : "차단"} · ` +
+      `1건 상한 ${r.maxOrderAmount === 0 ? "없음" : Number(r.maxOrderAmount).toLocaleString("ko-KR") + "원"} · ` +
+      `하루 한도 -${Number(r.dailyLossLimit).toLocaleString("ko-KR")}원/${r.maxDailyOrders}회 — 새로고침하면 자동매매 카드에 반영됩니다`;
+    setTimeout(() => location.reload(), 2500);
   } catch (e) {
     msg.className = "msg err";
     msg.textContent = e.message;

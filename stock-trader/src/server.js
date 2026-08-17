@@ -76,8 +76,11 @@ async function handleApi(req, res, pathname, body) {
       profiles: { paper: !!raw?.paper?.appKey || !!raw?.appKey, real: !!raw?.real?.appKey },
       settings: {
         allowRealOrders: raw?.allowRealOrders === true,
+        allowRealAutoTrade: raw?.allowRealAutoTrade === true,
         maxOrderAmount: Number(raw?.maxOrderAmount ?? 100000),
         autoTradeBudget: Number(raw?.autoTradeBudget ?? 1000000),
+        dailyLossLimit: Number(raw?.dailyLossLimit ?? 100000),
+        maxDailyOrders: Number(raw?.maxDailyOrders ?? 6),
       },
       engine: engineStatus(),
     };
@@ -128,6 +131,7 @@ async function handleApi(req, res, pathname, body) {
     const raw = readRawConfig();
     if (!raw) throw new Error("설정이 없습니다.");
     if (typeof body.allowRealOrders === "boolean") raw.allowRealOrders = body.allowRealOrders;
+    if (typeof body.allowRealAutoTrade === "boolean") raw.allowRealAutoTrade = body.allowRealAutoTrade;
     if (body.maxOrderAmount != null) {
       const v = Number(body.maxOrderAmount);
       if (!Number.isFinite(v) || v < 0) throw new Error("주문 상한 금액이 올바르지 않습니다.");
@@ -138,11 +142,28 @@ async function handleApi(req, res, pathname, body) {
       if (!Number.isFinite(v) || v < 10000) throw new Error("자동매매 예산은 1만원 이상이어야 합니다.");
       raw.autoTradeBudget = v;
     }
+    if (body.dailyLossLimit != null) {
+      const v = Number(body.dailyLossLimit);
+      if (!Number.isFinite(v) || v < 10000) throw new Error("하루 손실 한도는 1만원 이상이어야 합니다.");
+      raw.dailyLossLimit = v;
+    }
+    if (body.maxDailyOrders != null) {
+      const v = Number(body.maxDailyOrders);
+      if (!Number.isInteger(v) || v < 1 || v > 100) throw new Error("하루 최대 주문 수는 1~100 사이여야 합니다.");
+      raw.maxDailyOrders = v;
+    }
+    // 실전 자동매매는 주문 허용 없이는 켤 수 없다
+    if (raw.allowRealAutoTrade && !raw.allowRealOrders) {
+      throw new Error("'실전 주문 허용'을 먼저 켜야 실전 자동매매를 허용할 수 있습니다.");
+    }
     writeRawConfig(raw);
     return {
       allowRealOrders: raw.allowRealOrders === true,
+      allowRealAutoTrade: raw.allowRealAutoTrade === true,
       maxOrderAmount: raw.maxOrderAmount,
       autoTradeBudget: raw.autoTradeBudget,
+      dailyLossLimit: raw.dailyLossLimit,
+      maxDailyOrders: raw.maxDailyOrders,
     };
   }
 

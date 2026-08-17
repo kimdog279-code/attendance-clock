@@ -731,11 +731,22 @@ function renderMobile(m) {
       "⚠ 켜졌습니다 — <b>프로그램을 껐다가 다시 켜면 적용됩니다.</b> " +
       "재시작 후 Windows 방화벽 창이 뜨면 <b>[액세스 허용]</b>을 눌러주세요.";
   } else {
-    info.innerHTML =
-      `핸드폰 브라우저(같은 와이파이)에서 접속: ` +
-      m.urls.map((u) => `<b>${u}</b>`).join(" 또는 ") +
-      ` · PIN: <b style="font-size:16px;letter-spacing:2px">${m.pin}</b>` +
-      `<br/>접속이 안 되면: 핸드폰이 같은 와이파이인지, 방화벽에서 Node.js를 허용했는지 확인하세요.`;
+    const anywhere = m.urls.filter((u) => u.anywhere);
+    const lan = m.urls.filter((u) => !u.anywhere);
+    let html = "";
+    if (anywhere.length) {
+      html += `🌏 <b>어디서나 접속</b> (폰에 Tailscale 앱 켜져 있을 때): ` +
+        anywhere.map((u) => `<b>${u.url}</b>`).join(" 또는 ") + `<br/>`;
+    }
+    if (lan.length) {
+      html += `🏠 같은 와이파이에서 접속: ` + lan.map((u) => `<b>${u.url}</b>`).join(" 또는 ") + `<br/>`;
+    }
+    html += `PIN: <b style="font-size:16px;letter-spacing:2px">${m.pin}</b>`;
+    if (!anywhere.length) {
+      html += `<br/>💡 집 밖(LTE/5G)에서도 쓰려면: PC와 폰에 무료 앱 <b>Tailscale</b>을 설치하고
+        같은 계정으로 로그인하세요. 설치하면 여기에 "어디서나 접속" 주소가 자동으로 나타납니다.`;
+    }
+    info.innerHTML = html;
   }
 }
 

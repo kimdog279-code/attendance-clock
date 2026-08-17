@@ -24,10 +24,13 @@ function lanAddresses() {
   const out = [];
   for (const list of Object.values(os.networkInterfaces())) {
     for (const ni of list ?? []) {
-      if (ni.family === "IPv4" && !ni.internal) out.push(ni.address);
+      if (ni.family !== "IPv4" || ni.internal) continue;
+      // Tailscale은 100.64~100.127 대역을 사용 — 어디서나 접속 가능한 주소
+      const anywhere = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ni.address);
+      out.push({ address: ni.address, anywhere });
     }
   }
-  return out;
+  return out.sort((a, b) => Number(b.anywhere) - Number(a.anywhere));
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -403,7 +406,9 @@ async function handleApi(req, res, pathname, body) {
     return {
       enabled: mc.enabled,
       pin: mc.enabled ? mc.pin : null,
-      urls: mc.enabled ? lanAddresses().map((ip) => `http://${ip}:${PORT}`) : [],
+      urls: mc.enabled
+        ? lanAddresses().map((ni) => ({ url: `http://${ni.address}:${PORT}`, anywhere: ni.anywhere }))
+        : [],
       listeningLan: SERVER_HOST === "0.0.0.0",
     };
   }
@@ -517,7 +522,11 @@ server.listen(PORT, SERVER_HOST, () => {
   console.log("이 검은 창은 프로그램의 엔진입니다. 닫으면 프로그램도 꺼져요. (최소화는 OK)");
   if (SERVER_HOST === "0.0.0.0") {
     const mc = mobileConfig();
-    for (const ip of lanAddresses()) console.log(`📱 핸드폰(같은 와이파이): http://${ip}:${PORT}  (PIN ${mc.pin})`);
+    for (const ni of lanAddresses()) {
+      console.log(
+        `📱 핸드폰${ni.anywhere ? "(어디서나·Tailscale)" : "(같은 와이파이)"}: http://${ni.address}:${PORT}  (PIN ${mc.pin})`
+      );
+    }
   }
   keepAwake();
   openBrowser();

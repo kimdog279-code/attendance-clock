@@ -7,6 +7,18 @@
 > (`mode: "real"` + `allowRealOrders: true`)를 모두 켜야만 나갑니다.
 > 모의투자에서 충분히 검증하기 전에는 절대 실전으로 전환하지 마세요.
 
+## 🔰 초보자용: 제일 쉬운 시작 방법
+
+개발 도구 없이 시작하는 방법입니다. (한국투자증권 HTS 설치는 필요 없습니다)
+
+1. **Node.js 설치** — <https://nodejs.org/ko> 에서 다운로드 후 "다음"만 계속 눌러 설치
+2. **프로그램 다운로드** — [여기를 클릭해 ZIP 다운로드](https://github.com/kimdog279-code/attendance-clock/archive/refs/heads/claude/stock-trading-program-plan-ppt94p.zip) → 압축 풀기
+3. 압축 푼 폴더 안의 `stock-trader` 폴더에서 **`시작하기.bat` 더블클릭**
+4. 처음 실행하면 APP Key / APP Secret / 모의계좌번호를 물어봅니다. 붙여넣고 Enter
+5. 메뉴에서 번호를 골라 사용 (1. 현재가 → 2. 내 계좌 → 3. 데이터 수집 → 4. 백테스트 → 5. 매수)
+
+아래는 터미널에 익숙한 사용자를 위한 상세 설명입니다.
+
 ## 시작하기 (코딩 전 준비물)
 
 1. **한국투자증권 계좌 개설** — 앱 또는 지점에서 위탁계좌 개설
@@ -66,6 +78,9 @@ src/
     quotations.js   현재가·일봉 조회
     orders.js       매수/매도 주문 (실전 주문 안전장치 포함)
     balance.js      잔고·평가손익 조회
+  menu.js           초보자용 대화형 메뉴 (시작하기.bat이 실행하는 진입점)
+  setup.js          설정 마법사 (키 입력 → config.json 생성 → 연결 테스트)
+  prompt.js         대화형 입력 도우미 (여러 줄 붙여넣기 대응 줄 버퍼링)
   store.js          일봉 로컬 저장소 (data/daily/<종목코드>.json, 병합·중복 제거)
   collect.js        일봉 수집기 (100건 제한을 기간 분할 반복 조회로 우회, 호출 제한 대기)
   backtest.js       백테스팅 엔진 (SMA 크로스, 다음 날 시가 체결, 수수료·거래세·MDD)

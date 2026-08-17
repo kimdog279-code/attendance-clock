@@ -9,6 +9,7 @@
   "src/prompt.js",
   "src/update.js",
   "src/engine.js",
+  "src/strategies.js",
   "src/server.js",
   "ui/index.html",
   "ui/app.js",

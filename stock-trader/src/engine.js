@@ -80,10 +80,15 @@ function logLine(text) {
 }
 
 // live=true면 모의투자 주문까지 실행, false면 신호만.
+// strategy: { id, params } — 생략 시 이동평균 5/20.
 // stopPromise가 resolve되면 다음 사이클에서 멈춘다.
-export async function startEngine({ code, live, stopPromise, log = console.log }) {
+export async function startEngine({ code, live, stopPromise, strategy, log = console.log }) {
   const config = loadConfig();
   const pollMs = Number(process.env.ENGINE_POLL_MS ?? 30000);
+  const { STRATEGIES } = await import("./strategies.js");
+  const stratId = strategy?.id && STRATEGIES[strategy.id] ? strategy.id : "sma";
+  const stratParams = strategy?.params ?? { short: 5, long: 20 };
+  const strat = STRATEGIES[stratId];
 
   if (live && config.mode === "real") {
     log("⚠ 실전투자 모드에서는 자동 주문을 지원하지 않습니다. 연습 모드로 전환합니다.");
@@ -105,7 +110,7 @@ export async function startEngine({ code, live, stopPromise, log = console.log }
   const state = loadState(code);
 
   log(`\n자동매매 시작 — ${code}, ${live ? "🟢 모의주문 실행 모드" : "🔵 연습 모드(신호만)"}`);
-  log(`전략: 5일/20일 이동평균 크로스, ${pollMs / 1000}초마다 확인`);
+  log(`전략: ${strat.label(stratParams)}, ${pollMs / 1000}초마다 확인`);
   log(`보유 상태: ${state.position ? `${won(state.position.qty)}주 보유 중` : "없음"}`);
   logLine(`엔진 시작 ${code} (${live ? "주문 실행" : "연습"})`);
 
@@ -120,10 +125,11 @@ export async function startEngine({ code, live, stopPromise, log = console.log }
       const today = kst().dateStr;
       const history = loadDaily(code).filter((c) => c.date < today);
       const p = await getPrice(code);
-      const { signal, shortNow, longNow, reason } = evaluateSignal(history, p.price);
+      const quote = { price: p.price, open: p.open, today };
+      const { signal, note } = strat.signalNow(history, quote, state.position, stratParams);
 
-      if (reason === "insufficient-data") {
-        log("일봉 데이터가 부족합니다. 메뉴 3(데이터 수집)을 먼저 실행해주세요.");
+      if (note === "데이터 부족") {
+        log("일봉 데이터가 부족합니다. [데이터 수집]을 먼저 실행해주세요.");
         break;
       }
 
@@ -132,9 +138,7 @@ export async function startEngine({ code, live, stopPromise, log = console.log }
           ? `보유 ${won(state.position.qty)}주`
           : "보유 중(연습)"
         : "미보유";
-      log(
-        `[${kst().timeStr}] 현재가 ${won(p.price)} | 5일선 ${won(Math.round(shortNow))} / 20일선 ${won(Math.round(longNow))} | ${posLabel}`
-      );
+      log(`[${kst().timeStr}] 현재가 ${won(p.price)} | ${note} | ${posLabel}`);
 
       const alreadyFired = state.lastSignal?.date === today && state.lastSignal?.type === signal;
 
@@ -153,7 +157,7 @@ export async function startEngine({ code, live, stopPromise, log = console.log }
           }
         } else {
           state.position = { qty: 0, entryPrice: p.price, date: today };
-          log(`🔔 [연습] 골든크로스 매수 신호! 지금이라면 ${won(p.price)}원에 매수했을 거예요.`);
+          log(`🔔 [연습] 매수 신호 (${note})! 지금이라면 ${won(p.price)}원에 매수했을 거예요.`);
           logLine(`[연습] 매수 신호 ${code} @ ${p.price}`);
         }
         saveState(code, state);
@@ -173,7 +177,7 @@ export async function startEngine({ code, live, stopPromise, log = console.log }
         } else {
           const entry = state.position.entryPrice;
           const pct = (((p.price - entry) / entry) * 100).toFixed(2);
-          log(`🔔 [연습] 데드크로스 매도 신호! ${won(entry)}원에 샀다면 지금 ${won(p.price)}원 (${pct}%)에 팔았을 거예요.`);
+          log(`🔔 [연습] 매도 신호 (${note})! ${won(entry)}원에 샀다면 지금 ${won(p.price)}원 (${pct}%)에 팔았을 거예요.`);
           logLine(`[연습] 매도 신호 ${code} @ ${p.price}`);
         }
         state.position = null;

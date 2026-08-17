@@ -260,6 +260,51 @@ $("#btnBuy").addEventListener("click", () => placeOrder("buy"));
 $("#btnSell").addEventListener("click", () => placeOrder("sell"));
 $("#btnBalance").addEventListener("click", () => loadBalance().catch(() => {}));
 
+// ── 전략 추천 ──────────────────────────────────────────────────
+let chosenStrategy = { id: "sma", params: { short: 5, long: 20 }, label: "이동평균 크로스 5/20일" };
+
+$("#btnRecommend").addEventListener("click", async () => {
+  const el = $("#recResult");
+  el.innerHTML = "분석 중... (전략 4종 × 여러 설정을 전부 시뮬레이션합니다)";
+  try {
+    const r = await api("/api/recommend?code=" + currentCode);
+    const pct = (x) => (x * 100).toFixed(1) + "%";
+    const rec = r.recommendation;
+    const rows = r.finalists
+      .map(
+        (f, i) => `<tr>
+          <td>${i === 0 ? "🏆 " : ""}${f.label}</td>
+          <td class="num" style="color:${f.validate.totalReturn >= 0 ? "var(--up)" : "var(--down)"}">${pct(f.validate.totalReturn)}</td>
+          <td class="num">${pct(f.validate.maxDrawdown)}</td>
+          <td class="num">${f.validate.tradeCount}회</td></tr>`
+      )
+      .join("");
+    el.innerHTML = `
+      <div class="notice" style="margin-bottom:12px">
+        <b>추천: ${rec.label}</b><br/>
+        시험 기간(최근 1년) 수익률 <b style="color:${rec.validate.totalReturn >= 0 ? "var(--up)" : "var(--down)"}">${pct(rec.validate.totalReturn)}</b>
+        (그냥 보유했다면 ${pct(r.buyHoldValidate.totalReturn)})
+        · 최대 하락폭 ${pct(rec.validate.maxDrawdown)}
+        ${rec.beatsBuyHold ? "" : "<br/>⚠ 시험 기간에는 단순 보유가 더 나았습니다. 이 종목은 전략 매매보다 보유가 유리했을 수 있어요."}
+      </div>
+      <table>
+        <tr><th>최종 후보 (연습 기간 상위 3개)</th><th class="num">시험 수익률</th><th class="num">최대 하락폭</th><th class="num">매매</th></tr>
+        ${rows}
+      </table>
+      <div class="row" style="margin-top:10px">
+        <button class="small" id="btnUseRec">이 전략을 자동매매에 적용</button>
+        <span class="hint">연습 ${r.period.train} → 시험 ${r.period.validate} · 총 ${r.candidatesTried}개 조합 비교 · 과거 성과일 뿐 미래 보장이 아닙니다</span>
+      </div>`;
+    $("#btnUseRec").addEventListener("click", () => {
+      chosenStrategy = { id: rec.id, params: rec.params, label: rec.label };
+      $("#engStrategy").textContent = rec.label;
+      $("#engStrategy").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  } catch (e) {
+    el.innerHTML = `<span class="msg err">${e.message}</span>`;
+  }
+});
+
 // ── 자동매매 ───────────────────────────────────────────────────
 function syncEngine(st) {
   const btn = $("#btnEngine");
@@ -294,8 +339,11 @@ $("#btnEngine").addEventListener("click", async () => {
       syncEngine(await api("/api/engine"));
     } else {
       const live = document.querySelector('input[name="engMode"]:checked').value === "live";
-      if (live && !confirm("주문 실행 모드입니다.\n신호가 오면 모의투자 계좌에 진짜 주문이 나갑니다. 시작할까요?")) return;
-      await api("/api/engine/start", { method: "POST", body: { code: currentCode, live } });
+      if (live && !confirm(`주문 실행 모드입니다.\n전략: ${chosenStrategy.label}\n신호가 오면 모의투자 계좌에 진짜 주문이 나갑니다. 시작할까요?`)) return;
+      await api("/api/engine/start", {
+        method: "POST",
+        body: { code: currentCode, live, strategy: { id: chosenStrategy.id, params: chosenStrategy.params } },
+      });
       $("#engineLog").textContent = "시작하는 중...";
       setTimeout(async () => syncEngine(await api("/api/engine")), 800);
     }

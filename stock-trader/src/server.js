@@ -21,7 +21,7 @@ function appVersion() {
 }
 
 // ── 자동매매 엔진 관리 (서버당 1개) ─────────────────────────────
-const engine = { running: false, code: null, live: false, logs: [], stop: null };
+const engine = { running: false, code: null, live: false, logs: [], stop: null, strategyLabel: null };
 
 function engineLog(msg) {
   for (const line of String(msg).split("\n")) {
@@ -32,12 +32,18 @@ function engineLog(msg) {
   console.log(msg);
 }
 
-function startEngineBg(code, live) {
+async function startEngineBg(code, live, strategy) {
   if (engine.running) throw new Error("자동매매가 이미 실행 중입니다. 먼저 정지해주세요.");
+  const { STRATEGIES } = await import("./strategies.js");
+  const id = strategy?.id && STRATEGIES[strategy.id] ? strategy.id : "sma";
+  const params = strategy?.params ?? { short: 5, long: 20 };
   let stopResolver;
   const stopPromise = new Promise((resolve) => (stopResolver = resolve));
-  Object.assign(engine, { running: true, code, live, logs: [], stop: stopResolver });
-  startEngine({ code, live, stopPromise, log: engineLog })
+  Object.assign(engine, {
+    running: true, code, live, logs: [], stop: stopResolver,
+    strategyLabel: STRATEGIES[id].label(params),
+  });
+  startEngine({ code, live, stopPromise, strategy: { id, params }, log: engineLog })
     .catch((err) => engineLog(`엔진 오류로 중단: ${err.message}`))
     .finally(() => {
       engine.running = false;
@@ -53,7 +59,7 @@ function engineStatus() {
       ).position;
     } catch {}
   }
-  return { running: engine.running, code: engine.code, live: engine.live, logs: engine.logs.slice(-40), position };
+  return { running: engine.running, code: engine.code, live: engine.live, strategyLabel: engine.strategyLabel, logs: engine.logs.slice(-40), position };
 }
 
 // ── API 핸들러 ─────────────────────────────────────────────────
@@ -129,8 +135,14 @@ async function handleApi(req, res, pathname, body) {
   }
 
   if (pathname === "/api/engine/start" && req.method === "POST") {
-    startEngineBg(code, body.live === true);
+    await startEngineBg(code, body.live === true, body.strategy);
     return { ok: true };
+  }
+
+  if (pathname === "/api/recommend") {
+    const { loadDaily } = await import("./store.js");
+    const { recommend } = await import("./strategies.js");
+    return recommend(loadDaily(code));
   }
 
   if (pathname === "/api/engine/stop" && req.method === "POST") {

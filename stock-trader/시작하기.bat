@@ -14,6 +14,6 @@ if errorlevel 1 (
   exit /b
 )
 
-node src/menu.js
+node src/server.js
 echo.
 pause

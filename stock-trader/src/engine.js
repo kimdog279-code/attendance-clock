@@ -81,12 +81,12 @@ function logLine(text) {
 
 // live=true면 모의투자 주문까지 실행, false면 신호만.
 // stopPromise가 resolve되면 다음 사이클에서 멈춘다.
-export async function startEngine({ code, live, stopPromise }) {
+export async function startEngine({ code, live, stopPromise, log = console.log }) {
   const config = loadConfig();
   const pollMs = Number(process.env.ENGINE_POLL_MS ?? 30000);
 
   if (live && config.mode === "real") {
-    console.log("⚠ 실전투자 모드에서는 자동 주문을 지원하지 않습니다. 연습 모드로 전환합니다.");
+    log("⚠ 실전투자 모드에서는 자동 주문을 지원하지 않습니다. 연습 모드로 전환합니다.");
     live = false;
   }
 
@@ -96,7 +96,7 @@ export async function startEngine({ code, live, stopPromise }) {
   });
 
   // 최근 일봉 최신화 (약 넉 달치면 20일 이동평균 계산에 충분)
-  console.log("최근 일봉 데이터를 최신화하는 중...");
+  log("최근 일봉 데이터를 최신화하는 중...");
   const fourMonthsAgo = new Date(Date.now() - 120 * 24 * 3600 * 1000)
     .toISOString().slice(0, 10).replaceAll("-", "");
   await collectDaily(code, fourMonthsAgo);
@@ -104,16 +104,15 @@ export async function startEngine({ code, live, stopPromise }) {
   const { getPrice } = await import("./api/quotations.js");
   const state = loadState(code);
 
-  console.log(`\n자동매매 시작 — ${code}, ${live ? "🟢 모의주문 실행 모드" : "🔵 연습 모드(신호만)"}`);
-  console.log(`전략: 5일/20일 이동평균 크로스, ${pollMs / 1000}초마다 확인`);
-  console.log(`보유 상태: ${state.position ? `${won(state.position.qty)}주 보유 중` : "없음"}`);
-  console.log("멈추려면 Enter를 누르세요.\n");
+  log(`\n자동매매 시작 — ${code}, ${live ? "🟢 모의주문 실행 모드" : "🔵 연습 모드(신호만)"}`);
+  log(`전략: 5일/20일 이동평균 크로스, ${pollMs / 1000}초마다 확인`);
+  log(`보유 상태: ${state.position ? `${won(state.position.qty)}주 보유 중` : "없음"}`);
   logLine(`엔진 시작 ${code} (${live ? "주문 실행" : "연습"})`);
 
   while (!stopped) {
     try {
       if (!marketOpenNow()) {
-        console.log(`[${kst().timeStr}] 장이 닫혀 있습니다 (평일 09:00~15:30에만 동작). 대기 중...`);
+        log(`[${kst().timeStr}] 장이 닫혀 있습니다 (평일 09:00~15:30에만 동작). 대기 중...`);
         await Promise.race([sleep(60000), stopPromise]);
         continue;
       }
@@ -124,7 +123,7 @@ export async function startEngine({ code, live, stopPromise }) {
       const { signal, shortNow, longNow, reason } = evaluateSignal(history, p.price);
 
       if (reason === "insufficient-data") {
-        console.log("일봉 데이터가 부족합니다. 메뉴 3(데이터 수집)을 먼저 실행해주세요.");
+        log("일봉 데이터가 부족합니다. 메뉴 3(데이터 수집)을 먼저 실행해주세요.");
         break;
       }
 
@@ -133,7 +132,7 @@ export async function startEngine({ code, live, stopPromise }) {
           ? `보유 ${won(state.position.qty)}주`
           : "보유 중(연습)"
         : "미보유";
-      console.log(
+      log(
         `[${kst().timeStr}] 현재가 ${won(p.price)} | 5일선 ${won(Math.round(shortNow))} / 20일선 ${won(Math.round(longNow))} | ${posLabel}`
       );
 
@@ -145,16 +144,16 @@ export async function startEngine({ code, live, stopPromise }) {
           const { buy } = await import("./api/orders.js");
           const qty = Math.floor(config.autoTradeBudget / p.price);
           if (qty < 1) {
-            console.log(`🔔 매수 신호! 하지만 예산(${won(config.autoTradeBudget)}원)으로 1주도 살 수 없어 건너뜁니다.`);
+            log(`🔔 매수 신호! 하지만 예산(${won(config.autoTradeBudget)}원)으로 1주도 살 수 없어 건너뜁니다.`);
           } else {
             const r = await buy(code, qty);
             state.position = { qty, entryPrice: p.price, date: today };
-            console.log(`🟢 매수 주문 실행! ${qty}주 (주문번호 ${r.orderNo})`);
+            log(`🟢 매수 주문 실행! ${qty}주 (주문번호 ${r.orderNo})`);
             logLine(`매수 주문 ${code} ${qty}주 @ ${p.price}`);
           }
         } else {
           state.position = { qty: 0, entryPrice: p.price, date: today };
-          console.log(`🔔 [연습] 골든크로스 매수 신호! 지금이라면 ${won(p.price)}원에 매수했을 거예요.`);
+          log(`🔔 [연습] 골든크로스 매수 신호! 지금이라면 ${won(p.price)}원에 매수했을 거예요.`);
           logLine(`[연습] 매수 신호 ${code} @ ${p.price}`);
         }
         saveState(code, state);
@@ -165,29 +164,29 @@ export async function startEngine({ code, live, stopPromise }) {
           const { sell } = await import("./api/orders.js");
           const holding = (await getBalance()).holdings.find((h) => h.code === code);
           if (!holding) {
-            console.log("🔔 매도 신호! 하지만 계좌에 이 종목이 없어 건너뜁니다.");
+            log("🔔 매도 신호! 하지만 계좌에 이 종목이 없어 건너뜁니다.");
           } else {
             const r = await sell(code, holding.qty);
-            console.log(`🔴 매도 주문 실행! ${holding.qty}주 (주문번호 ${r.orderNo})`);
+            log(`🔴 매도 주문 실행! ${holding.qty}주 (주문번호 ${r.orderNo})`);
             logLine(`매도 주문 ${code} ${holding.qty}주 @ ${p.price}`);
           }
         } else {
           const entry = state.position.entryPrice;
           const pct = (((p.price - entry) / entry) * 100).toFixed(2);
-          console.log(`🔔 [연습] 데드크로스 매도 신호! ${won(entry)}원에 샀다면 지금 ${won(p.price)}원 (${pct}%)에 팔았을 거예요.`);
+          log(`🔔 [연습] 데드크로스 매도 신호! ${won(entry)}원에 샀다면 지금 ${won(p.price)}원 (${pct}%)에 팔았을 거예요.`);
           logLine(`[연습] 매도 신호 ${code} @ ${p.price}`);
         }
         state.position = null;
         saveState(code, state);
       }
     } catch (err) {
-      console.log(`오류 (계속 재시도합니다): ${err.message}`);
+      log(`오류 (계속 재시도합니다): ${err.message}`);
       logLine(`오류: ${err.message}`);
     }
 
     await Promise.race([sleep(pollMs), stopPromise]);
   }
 
-  console.log("\n자동매매를 멈췄습니다. (기록: data/auto-trade.log)");
+  log("\n자동매매를 멈췄습니다. (기록: data/auto-trade.log)");
   logLine("엔진 정지");
 }

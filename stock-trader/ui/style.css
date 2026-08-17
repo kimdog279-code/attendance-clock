@@ -1,0 +1,249 @@
+/* 디자인 토큰 — 라이트 기본, 다크는 OS 설정 따라감 */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --series-1: #2a78d6; /* 종가 */
+  --series-2: #eb6834; /* 5일선 */
+  --series-3: #1baf7a; /* 20일선 */
+  --up: #d03b3b;   /* 상승 (한국 관례: 빨강) */
+  --down: #1c5cab; /* 하락 (한국 관례: 파랑) */
+  --good: #0ca30c;
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --up: #ef6b6b;
+    --down: #6da7ec;
+    --accent: #3987e5;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+header h1 { font-size: 18px; margin: 0; font-weight: 700; }
+.badge {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+}
+.badge.paper { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+.badge.real { color: var(--up); border-color: color-mix(in srgb, var(--up) 40%, transparent); }
+.version { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+
+#updateBar {
+  display: none;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 20px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+main { max-width: 1060px; margin: 0 auto; padding: 18px 16px 60px; }
+
+/* 종목 선택 줄 */
+.stockbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.stockbar input[type="text"] { width: 120px; }
+.chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.chip:hover { border-color: var(--accent); color: var(--ink); }
+.chip.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* 카드 */
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+.card {
+  grid-column: span 12;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.card h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card h2 .spacer { margin-left: auto; }
+@media (min-width: 760px) {
+  .card.half { grid-column: span 6; }
+  .card.third { grid-column: span 4; }
+}
+
+/* 현재가 히어로 */
+.hero { font-size: 34px; font-weight: 700; letter-spacing: -0.5px; }
+.hero .unit { font-size: 18px; font-weight: 500; color: var(--ink-2); }
+.delta { font-size: 15px; font-weight: 600; }
+.delta.up { color: var(--up); }
+.delta.down { color: var(--down); }
+.subline { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+/* 표 */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px 6px 0; border-bottom: 1px solid var(--grid); }
+td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: none; }
+.num { text-align: right; }
+
+/* 차트 */
+#chartWrap { position: relative; }
+#chart { width: 100%; display: block; }
+#tooltip {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  min-width: 130px;
+  z-index: 5;
+}
+#tooltip .t-date { color: var(--muted); margin-bottom: 4px; }
+#tooltip .t-row { display: flex; align-items: center; gap: 6px; }
+#tooltip .t-row b { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--ink-2); margin-top: 6px; flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.chart-empty { color: var(--muted); text-align: center; padding: 40px 0; }
+
+/* 입력·버튼 */
+input[type="text"], input[type="number"], input[type="password"] {
+  background: var(--page);
+  color: var(--ink);
+  border: 1px solid var(--baseline);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+}
+input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
+button {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.08); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.ghost {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1px solid var(--baseline);
+  font-weight: 500;
+}
+button.buy { background: var(--up); }
+button.sell { background: var(--down); }
+button.small { padding: 5px 12px; font-size: 13px; }
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.field label { font-size: 13px; color: var(--ink-2); }
+.hint { font-size: 12.5px; color: var(--muted); }
+.msg { font-size: 13.5px; margin-top: 8px; min-height: 1.4em; }
+.msg.err { color: var(--up); }
+.msg.ok { color: var(--good); }
+
+/* 자동매매 로그 */
+#engineLog {
+  background: var(--page);
+  border: 1px solid var(--grid);
+  border-radius: 8px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12.5px;
+  padding: 10px 12px;
+  height: 190px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  color: var(--ink-2);
+  margin-top: 10px;
+}
+.pulse {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--good);
+  animation: pulse 1.6s infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* 백테스트 스탯 */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.stat { background: var(--page); border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* 설정 화면 */
+#setup { max-width: 520px; margin: 40px auto; }
+.notice {
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  padding: 10px 14px;
+  border-radius: 0 8px 8px 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  margin-bottom: 16px;
+}
+.hidden { display: none !important; }

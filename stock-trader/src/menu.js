@@ -118,6 +118,7 @@ async function autoTrade() {
   console.log("2. 주문 모드 — 신호가 오면 모의투자 계좌에 진짜 주문");
   const mode = (await ask("번호 (그냥 Enter = 1): ")).trim();
 
+  console.log("\n(멈추려면 Enter를 누르세요)");
   const stopPromise = ask(""); // Enter 입력을 기다렸다가 엔진을 멈춘다
   await startEngine({ code, live: mode === "2", stopPromise });
 }

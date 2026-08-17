@@ -89,8 +89,33 @@ async function order(side) {
   console.log("(장 운영시간이 아니면 다음 개장 때 처리됩니다. '2. 내 계좌'에서 확인하세요)");
 }
 
+async function checkUpdate() {
+  try {
+    const { checkForUpdate, applyUpdate } = await import("./update.js");
+    const remoteVersion = await checkForUpdate();
+    if (!remoteVersion) return false;
+
+    console.log(`\n🔔 새 버전(v${remoteVersion})이 나왔습니다!`);
+    const ok = (await ask("지금 업데이트할까요? (y 입력 시 업데이트): ")).trim().toLowerCase();
+    if (ok !== "y") return false;
+
+    const count = await applyUpdate();
+    console.log(`\n✅ 업데이트 완료! (${count}개 파일 교체)`);
+    console.log("프로그램을 껐다가 다시 켜주세요. 키 설정과 수집한 데이터는 그대로 유지됩니다.");
+    return true;
+  } catch (err) {
+    console.log(`업데이트 중 문제가 생겨 건너뜁니다: ${err.message}`);
+    return false;
+  }
+}
+
 async function main() {
   console.log("\n■■■ 주식 매매 프로그램 (모의투자) ■■■");
+
+  if (await checkUpdate()) {
+    closePrompt();
+    return;
+  }
 
   if (!configExists()) {
     await runSetup();

@@ -13,6 +13,10 @@ const BASE_URLS = {
 
 let cached = null;
 
+export function projectRoot() {
+  return ROOT;
+}
+
 export function configExists() {
   return fs.existsSync(CONFIG_PATH);
 }

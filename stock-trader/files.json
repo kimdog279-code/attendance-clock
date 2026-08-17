@@ -1,0 +1,20 @@
+[
+  "package.json",
+  "README.md",
+  "config.example.json",
+  "시작하기.bat",
+  "src/cli.js",
+  "src/menu.js",
+  "src/setup.js",
+  "src/prompt.js",
+  "src/update.js",
+  "src/config.js",
+  "src/token.js",
+  "src/kisClient.js",
+  "src/store.js",
+  "src/collect.js",
+  "src/backtest.js",
+  "src/api/quotations.js",
+  "src/api/orders.js",
+  "src/api/balance.js"
+]

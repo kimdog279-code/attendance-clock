@@ -92,6 +92,21 @@ async function handleApi(req, res, pathname, body) {
     return { ok: true, samplePrice: p.price };
   }
 
+  if (pathname === "/api/name") {
+    // 상품기본조회로 종목명 시도 — 모의투자에서 미지원일 수 있으므로 실패해도 빈 값으로 응답
+    try {
+      const { kisRequest } = await import("./kisClient.js");
+      const data = await kisRequest({
+        path: "/uapi/domestic-stock/v1/quotations/search-info",
+        trId: "CTPF1604R",
+        params: { PDNO: code, PRDT_TYPE_CD: "300" },
+      });
+      return { name: data.output?.prdt_abrv_name ?? data.output?.prdt_name ?? "" };
+    } catch {
+      return { name: "" };
+    }
+  }
+
   if (pathname === "/api/price") {
     const { getPrice } = await import("./api/quotations.js");
     return await getPrice(code);

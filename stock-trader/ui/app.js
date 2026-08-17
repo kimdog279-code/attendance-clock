@@ -410,11 +410,30 @@ $("#btnEngine").addEventListener("click", async () => {
 });
 
 // ── 종목 선택 ──────────────────────────────────────────────────
+// 자주 쓰는 종목 이름표 (서버 조회 실패 시의 보조 수단)
+const KNOWN_NAMES = {
+  "005930": "삼성전자", "000660": "SK하이닉스", "035720": "카카오", "005380": "현대차",
+  "035420": "NAVER", "042700": "한미반도체", "007660": "이수페타시스", "009150": "삼성전기",
+  "131970": "두산테스나", "267260": "HD현대일렉트릭", "010120": "LS ELECTRIC",
+  "298040": "효성중공업", "018260": "삼성SDS", "328130": "루닛", "066570": "한국전자금융",
+};
+
+async function showStockName(code) {
+  const el = $("#stockName");
+  el.textContent = KNOWN_NAMES[code] ?? "";
+  try {
+    const r = await api("/api/name?code=" + code);
+    if (r.name) el.textContent = r.name;
+    else if (!KNOWN_NAMES[code]) el.textContent = "이름 확인 불가 — 코드를 다시 확인하세요";
+  } catch {}
+}
+
 function setCode(code, name) {
   currentCode = code;
   $("#inCode").value = code;
   $("#stockName").textContent = name ?? "";
   document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c.dataset.code === code));
+  showStockName(code);
   refreshAll();
 }
 document.querySelectorAll(".chip").forEach((c) =>

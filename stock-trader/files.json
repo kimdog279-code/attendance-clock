@@ -3,6 +3,7 @@
   "README.md",
   "config.example.json",
   "시작하기.bat",
+  "바로가기만들기.bat",
   "src/cli.js",
   "src/menu.js",
   "src/setup.js",

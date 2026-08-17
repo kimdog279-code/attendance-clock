@@ -35,6 +35,8 @@ function showSetupForm(target, canGoBack) {
         "등록해도 <b>주문은 안전장치를 켜기 전까지 차단</b>되며, 조회만 가능합니다. " +
         "계좌번호는 실제 위탁계좌 8자리입니다."
       : "KIS Developers 포털에서 발급받은 <b>모의투자용</b> 키를 입력하세요. 키는 내 컴퓨터의 config.json 파일에만 저장됩니다.";
+  $("#labAccount").textContent =
+    target === "real" ? "실전 계좌번호 (실제 위탁계좌, 숫자 8자리)" : "모의투자 계좌번호 (숫자 8자리)";
   $("#btnBackToPaper").classList.toggle("hidden", !canGoBack);
   $("#setup").classList.remove("hidden");
 }
@@ -650,7 +652,11 @@ $("#btnSetup").addEventListener("click", async () => {
     setTimeout(() => location.reload(), 1500);
   } catch (e) {
     msg.className = "msg err";
-    msg.textContent = "❌ " + e.message + " — 키가 모의투자용이 맞는지 확인해주세요.";
+    msg.textContent =
+      "❌ " + e.message +
+      (setupTarget === "real"
+        ? " — 포털 신청현황에서 '실전투자' 행의 키인지(모의투자 키 아님), 실전 API 신청이 승인됐는지 확인해주세요."
+        : " — 키가 모의투자용이 맞는지 확인해주세요.");
     $("#btnSetup").disabled = false;
   }
 });

@@ -79,6 +79,7 @@ async function init() {
   refreshAll();
   loadStrategyCatalog().catch(() => {});
   loadWatchlist();
+  loadMobile();
   syncEngine(st.engine);
   checkUpdate();
   setInterval(() => loadPrice().catch(() => {}), 15000);
@@ -713,6 +714,46 @@ $("#btnSetup").addEventListener("click", async () => {
         ? " — 포털 신청현황에서 '실전투자' 행의 키인지(모의투자 키 아님), 실전 API 신청이 승인됐는지 확인해주세요."
         : " — 키가 모의투자용이 맞는지 확인해주세요.");
     $("#btnSetup").disabled = false;
+  }
+});
+
+// ── 핸드폰 접속 ────────────────────────────────────────────────
+function renderMobile(m) {
+  const btn = $("#btnMobile");
+  const info = $("#mobileInfo");
+  btn.textContent = m.enabled ? "끄기" : "켜기";
+  if (!m.enabled) {
+    info.innerHTML =
+      "같은 와이파이에 연결된 핸드폰으로 이 프로그램을 보고 조작할 수 있게 합니다. " +
+      "PIN 번호를 입력해야 접속되며, 집 밖(LTE/5G)에서는 접속되지 않습니다.";
+  } else if (!m.listeningLan) {
+    info.innerHTML =
+      "⚠ 켜졌습니다 — <b>프로그램을 껐다가 다시 켜면 적용됩니다.</b> " +
+      "재시작 후 Windows 방화벽 창이 뜨면 <b>[액세스 허용]</b>을 눌러주세요.";
+  } else {
+    info.innerHTML =
+      `핸드폰 브라우저(같은 와이파이)에서 접속: ` +
+      m.urls.map((u) => `<b>${u}</b>`).join(" 또는 ") +
+      ` · PIN: <b style="font-size:16px;letter-spacing:2px">${m.pin}</b>` +
+      `<br/>접속이 안 되면: 핸드폰이 같은 와이파이인지, 방화벽에서 Node.js를 허용했는지 확인하세요.`;
+  }
+}
+
+async function loadMobile() {
+  try { renderMobile(await api("/api/mobile")); } catch {}
+}
+
+$("#btnMobile").addEventListener("click", async () => {
+  const turningOn = $("#btnMobile").textContent === "켜기";
+  if (turningOn && !confirm(
+    "핸드폰 접속을 켭니다.\n\n" +
+    "· 같은 와이파이의 기기만 접속 가능하며 PIN 잠금이 걸립니다\n" +
+    "· 적용하려면 프로그램을 껐다가 다시 켜야 합니다\n" +
+    "· 재시작 시 Windows 방화벽 창이 뜨면 [액세스 허용]을 누르세요\n\n켤까요?")) return;
+  try {
+    renderMobile(await api("/api/mobile", { method: "POST", body: { enabled: turningOn } }));
+  } catch (e) {
+    $("#mobileInfo").textContent = e.message;
   }
 });
 

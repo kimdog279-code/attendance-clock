@@ -4,6 +4,8 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { configExists, loadConfig, resetConfigCache, projectRoot, readRawConfig, writeRawConfig } from "./config.js";
 import { startEngine } from "./engine.js";
@@ -11,6 +13,75 @@ import { startEngine } from "./engine.js";
 const PORT = 8321;
 const UI_DIR = path.join(projectRoot(), "ui");
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" };
+
+// ── 핸드폰(같은 와이파이) 접속 ──────────────────────────────────
+function mobileConfig() {
+  const raw = readRawConfig();
+  return { enabled: raw?.mobile?.enabled === true, pin: raw?.mobile?.pin ?? null };
+}
+
+function lanAddresses() {
+  const out = [];
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const ni of list ?? []) {
+      if (ni.family === "IPv4" && !ni.internal) out.push(ni.address);
+    }
+  }
+  return out;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const PIN_PAGE = (wrong) => `<!doctype html><html lang="ko"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/><title>주식 매매 프로그램</title>
+<style>body{font-family:system-ui,sans-serif;background:#f9f9f7;display:flex;justify-content:center;padding-top:18vh;margin:0}
+.box{background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:14px;padding:28px;max-width:300px;text-align:center}
+input{font-size:22px;width:140px;text-align:center;letter-spacing:6px;padding:8px;border:1px solid #bbb;border-radius:8px}
+button{margin-top:14px;font-size:15px;padding:9px 22px;border:none;border-radius:8px;background:#2a78d6;color:#fff;font-weight:600}
+.err{color:#d03b3b;font-size:13px;margin-top:10px}</style></head><body>
+<form class="box" method="POST" action="/pin"><h3>📈 주식 매매 프로그램</h3>
+<p style="font-size:14px;color:#555">컴퓨터 화면의 [📱 핸드폰 접속] 카드에<br/>표시된 PIN을 입력하세요</p>
+<input name="pin" inputmode="numeric" maxlength="6" autofocus autocomplete="off"/><br/>
+<button>접속</button>${wrong ? '<div class="err">PIN이 일치하지 않습니다</div>' : ""}</form></body></html>`;
+
+// 외부(같은 와이파이) 접속이면 PIN 쿠키를 검사한다. 통과 못 하면 PIN 페이지 응답.
+async function checkMobileAuth(req, res, rawBody) {
+  const remote = req.socket.remoteAddress ?? "";
+  const isLocal =
+    process.env.MOBILE_TEST_FORCE_AUTH !== "1" &&
+    (remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1");
+  if (isLocal) return true;
+
+  const { enabled, pin } = mobileConfig();
+  if (!enabled || !pin) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return false;
+  }
+  const cookiePin = (req.headers.cookie ?? "").split(";").map((c) => c.trim())
+    .find((c) => c.startsWith("stpin="))?.slice(6);
+  if (cookiePin === pin) return true;
+
+  const pathname = new URL(req.url, "http://x").pathname;
+  if (pathname === "/pin" && req.method === "POST") {
+    const entered = decodeURIComponent((rawBody.match(/pin=([^&]*)/) ?? [])[1] ?? "").trim();
+    if (entered === pin) {
+      res.writeHead(302, {
+        "set-cookie": `stpin=${pin}; Max-Age=2592000; HttpOnly; SameSite=Lax; Path=/`,
+        location: "/",
+      });
+      res.end();
+      return false;
+    }
+    await sleep(1000); // 무차별 대입 방지용 지연
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(PIN_PAGE(true));
+    return false;
+  }
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+  res.end(PIN_PAGE(false));
+  return false;
+}
 
 function appVersion() {
   try {
@@ -317,6 +388,26 @@ async function handleApi(req, res, pathname, body) {
 
   if (pathname === "/api/engine") return engineStatus();
 
+  if (pathname === "/api/mobile") {
+    if (req.method === "POST") {
+      const raw = readRawConfig();
+      if (!raw) throw new Error("설정이 없습니다.");
+      if (body.enabled === true) {
+        raw.mobile = { enabled: true, pin: raw.mobile?.pin ?? String(crypto.randomInt(100000, 1000000)) };
+      } else {
+        raw.mobile = { ...(raw.mobile ?? {}), enabled: false };
+      }
+      writeRawConfig(raw);
+    }
+    const mc = mobileConfig();
+    return {
+      enabled: mc.enabled,
+      pin: mc.enabled ? mc.pin : null,
+      urls: mc.enabled ? lanAddresses().map((ip) => `http://${ip}:${PORT}`) : [],
+      listeningLan: SERVER_HOST === "0.0.0.0",
+    };
+  }
+
   if (pathname === "/api/update") {
     const { checkForUpdate } = await import("./update.js");
     return { current: appVersion(), remote: await checkForUpdate() };
@@ -340,6 +431,8 @@ const server = http.createServer((req, res) => {
     if (raw.length > 1e6) req.destroy();
   });
   req.on("end", async () => {
+    if (!(await checkMobileAuth(req, res, raw))) return;
+
     if (pathname.startsWith("/api/")) {
       let body = {};
       try {
@@ -417,9 +510,15 @@ server.on("error", (err) => {
   throw err;
 });
 
-server.listen(PORT, "127.0.0.1", () => {
+const SERVER_HOST = mobileConfig().enabled ? "0.0.0.0" : "127.0.0.1";
+
+server.listen(PORT, SERVER_HOST, () => {
   console.log(`주식 매매 프로그램이 켜졌습니다: ${URL_STR}`);
   console.log("이 검은 창은 프로그램의 엔진입니다. 닫으면 프로그램도 꺼져요. (최소화는 OK)");
+  if (SERVER_HOST === "0.0.0.0") {
+    const mc = mobileConfig();
+    for (const ip of lanAddresses()) console.log(`📱 핸드폰(같은 와이파이): http://${ip}:${PORT}  (PIN ${mc.pin})`);
+  }
   keepAwake();
   openBrowser();
 });

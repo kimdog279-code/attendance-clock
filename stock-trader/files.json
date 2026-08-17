@@ -8,6 +8,7 @@
   "src/setup.js",
   "src/prompt.js",
   "src/update.js",
+  "src/engine.js",
   "src/config.js",
   "src/token.js",
   "src/kisClient.js",

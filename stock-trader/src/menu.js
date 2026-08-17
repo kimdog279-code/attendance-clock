@@ -109,6 +109,19 @@ async function checkUpdate() {
   }
 }
 
+async function autoTrade() {
+  const { startEngine } = await import("./engine.js");
+  const code = await askStockCode();
+
+  console.log("\n어떤 방식으로 돌릴까요?");
+  console.log("1. 연습 모드 — 신호가 오면 알려주기만 (추천, 먼저 이걸로 신뢰를 확인하세요)");
+  console.log("2. 주문 모드 — 신호가 오면 모의투자 계좌에 진짜 주문");
+  const mode = (await ask("번호 (그냥 Enter = 1): ")).trim();
+
+  const stopPromise = ask(""); // Enter 입력을 기다렸다가 엔진을 멈춘다
+  await startEngine({ code, live: mode === "2", stopPromise });
+}
+
 async function main() {
   console.log("\n■■■ 주식 매매 프로그램 (모의투자) ■■■");
 
@@ -134,6 +147,7 @@ async function main() {
     console.log("4. 백테스트 (과거 데이터로 전략 검증)");
     console.log("5. 매수 주문");
     console.log("6. 매도 주문");
+    console.log("7. 자동매매 (신호 감지·자동 주문)");
     console.log("9. 설정 다시 하기");
     console.log("0. 종료");
 
@@ -147,8 +161,9 @@ async function main() {
       else if (choice === "4") await backtest();
       else if (choice === "5") await order("buy");
       else if (choice === "6") await order("sell");
+      else if (choice === "7") await autoTrade();
       else if (choice === "9") await runSetup();
-      else console.log("1~6, 9, 0 중에서 골라주세요.");
+      else console.log("1~7, 9, 0 중에서 골라주세요.");
     } catch (err) {
       console.log(`\n문제가 생겼어요: ${err.message}`);
       console.log("인터넷 연결과 설정(메뉴 9)을 확인한 뒤 다시 시도해보세요.");

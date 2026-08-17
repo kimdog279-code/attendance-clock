@@ -68,6 +68,25 @@ header h1 { font-size: 18px; margin: 0; font-weight: 700; }
 }
 .badge.paper { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .badge.real { color: var(--up); border-color: color-mix(in srgb, var(--up) 40%, transparent); }
+
+/* 모의/실전 전환 스위치 */
+#modeSwitch {
+  display: inline-flex;
+  border: 1px solid var(--baseline);
+  border-radius: 999px;
+  overflow: hidden;
+}
+#modeSwitch button {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 0;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+#modeSwitch button.on.paper-on { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); }
+#modeSwitch button.on.real-on { background: color-mix(in srgb, var(--up) 16%, transparent); color: var(--up); }
 .version { color: var(--muted); font-size: 12.5px; margin-left: auto; }
 
 #updateBar {

@@ -6,6 +6,8 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 let currentCode = "005930";
 let chartData = [];
 let engineTimer = null;
+let MODE = "paper";
+let setupTarget = "paper";
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -19,20 +21,46 @@ async function api(path, opts = {}) {
 }
 
 // ── 초기화 ─────────────────────────────────────────────────────
+function renderModeSwitch() {
+  $("#mwPaper").className = MODE === "paper" ? "on paper-on" : "";
+  $("#mwReal").className = MODE === "real" ? "on real-on" : "";
+}
+
+function showSetupForm(target, canGoBack) {
+  setupTarget = target;
+  $("#setupTitle").textContent = target === "real" ? "⚠ 실전투자 키 등록" : "처음 설정";
+  $("#setupNotice").innerHTML =
+    target === "real"
+      ? "KIS Developers 포털에서 발급받은 <b>실전투자용</b> 키를 입력하세요 (모의투자 키와 별개). " +
+        "등록해도 <b>주문은 안전장치를 켜기 전까지 차단</b>되며, 조회만 가능합니다. " +
+        "계좌번호는 실제 위탁계좌 8자리입니다."
+      : "KIS Developers 포털에서 발급받은 <b>모의투자용</b> 키를 입력하세요. 키는 내 컴퓨터의 config.json 파일에만 저장됩니다.";
+  $("#btnBackToPaper").classList.toggle("hidden", !canGoBack);
+  $("#setup").classList.remove("hidden");
+}
+
 async function init() {
   const st = await api("/api/status");
   $("#version").textContent = "v" + st.version;
+  MODE = st.mode;
+  renderModeSwitch();
 
   if (!st.configured) {
-    $("#modeBadge").textContent = "설정 필요";
-    $("#setup").classList.remove("hidden");
+    showSetupForm(st.mode, st.mode === "real" && st.profiles.paper);
     return;
   }
 
-  const badge = $("#modeBadge");
-  badge.textContent = st.mode === "paper" ? "모의투자 (가짜 돈)" : "⚠ 실전투자";
-  badge.classList.add(st.mode === "paper" ? "paper" : "real");
   $("#dash").classList.remove("hidden");
+
+  // 실전 모드 전용 UI
+  $("#safetyCard").classList.toggle("hidden", MODE !== "real");
+  if (MODE === "real") {
+    $("#setAllow").checked = st.settings.allowRealOrders;
+    $("#setMax").value = st.settings.maxOrderAmount;
+    const liveRadio = document.querySelector('input[name="engMode"][value="live"]');
+    liveRadio.disabled = true;
+    liveRadio.closest("label").style.opacity = "0.45";
+  }
 
   refreshAll();
   loadStrategyCatalog().catch(() => {});
@@ -282,7 +310,12 @@ async function placeOrder(side) {
   const qty = Number($("#inQty").value);
   const label = side === "buy" ? "매수" : "매도";
   const priceNow = $("#price").textContent;
-  if (!confirm(`${currentCode} ${qty}주를 시장가로 ${label}할까요?\n(현재가 기준 약 ${priceNow}원 × ${qty}주)`)) return;
+  const stockLabel = $("#stockName").textContent || currentCode;
+  const message =
+    MODE === "real"
+      ? `⚠⚠ 실전 계좌 — 진짜 돈입니다 ⚠⚠\n\n${stockLabel}(${currentCode}) ${qty}주 시장가 ${label}\n현재가 기준 약 ${priceNow}원 × ${qty}주\n\n정말 주문할까요?`
+      : `${stockLabel}(${currentCode}) ${qty}주를 시장가로 ${label}할까요?\n(모의투자 · 현재가 기준 약 ${priceNow}원 × ${qty}주)`;
+  if (!confirm(message)) return;
   const msg = $("#orderMsg");
   msg.className = "msg";
   msg.textContent = "주문 넣는 중...";
@@ -552,6 +585,55 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".stockbar")) hideDrop();
 });
 
+// ── 모드 전환 ──────────────────────────────────────────────────
+async function switchMode(want) {
+  if (want === MODE) return;
+  if (want === "real" && !confirm("실전투자 모드로 전환합니다.\n조회는 자유롭지만, 주문은 [실전 안전장치]에서 허용을 켜기 전까지 차단됩니다.\n계속할까요?")) return;
+  try {
+    const r = await api("/api/mode", { method: "POST", body: { mode: want } });
+    if (r.needsKeys) {
+      $("#dash").classList.add("hidden");
+      showSetupForm("real", true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+$("#mwPaper").addEventListener("click", () => switchMode("paper"));
+$("#mwReal").addEventListener("click", () => switchMode("real"));
+$("#btnBackToPaper").addEventListener("click", async () => {
+  try {
+    await api("/api/mode", { method: "POST", body: { mode: "paper" } });
+    location.reload();
+  } catch (e) {
+    alert(e.message);
+  }
+});
+
+// ── 실전 안전장치 ──────────────────────────────────────────────
+$("#btnSaveSafety").addEventListener("click", async () => {
+  const msg = $("#safetyMsg");
+  const allow = $("#setAllow").checked;
+  if (allow && !confirm("⚠ 실전 주문 허용을 켭니다.\n이제 매수/매도 버튼이 진짜 돈으로 주문을 냅니다.\n(1건당 상한과 확인창은 계속 적용됩니다)\n켤까요?")) {
+    $("#setAllow").checked = false;
+    return;
+  }
+  try {
+    const r = await api("/api/settings", {
+      method: "POST",
+      body: { allowRealOrders: allow, maxOrderAmount: Number($("#setMax").value) },
+    });
+    msg.className = "msg ok";
+    msg.textContent = `저장됨 — 주문 ${r.allowRealOrders ? "허용" : "차단"}, 1건 상한 ${r.maxOrderAmount === 0 ? "없음" : Number(r.maxOrderAmount).toLocaleString("ko-KR") + "원"}`;
+  } catch (e) {
+    msg.className = "msg err";
+    msg.textContent = e.message;
+  }
+});
+
 // ── 설정 ───────────────────────────────────────────────────────
 $("#btnSetup").addEventListener("click", async () => {
   const msg = $("#setupMsg");
@@ -561,7 +643,7 @@ $("#btnSetup").addEventListener("click", async () => {
   try {
     const r = await api("/api/setup", {
       method: "POST",
-      body: { appKey: $("#inKey").value, appSecret: $("#inSecret").value, accountNo: $("#inAccount").value },
+      body: { target: setupTarget, appKey: $("#inKey").value, appSecret: $("#inSecret").value, accountNo: $("#inAccount").value },
     });
     msg.className = "msg ok";
     msg.textContent = `✅ 연결 성공! 삼성전자 현재가 ${won(r.samplePrice)}원 — 화면을 새로 불러옵니다.`;

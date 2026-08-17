@@ -29,6 +29,20 @@ export function resetConfigCache() {
   cached = null;
 }
 
+// 프로필·설정 편집용 원본 읽기/쓰기
+export function readRawConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export function writeRawConfig(obj) {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(obj, null, 2));
+  resetConfigCache();
+}
+
 export function loadConfig() {
   if (cached) return cached;
 
@@ -39,26 +53,41 @@ export function loadConfig() {
     );
   }
 
-  const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  let raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
 
-  for (const key of ["appKey", "appSecret", "accountNo"]) {
-    if (!raw[key] || raw[key].includes("발급받은")) {
-      throw new Error(`config.json의 "${key}" 값이 비어 있습니다.`);
-    }
+  // 구버전(키가 최상위에 하나만 있는 형식) → 모의/실전 프로필 구조로 자동 이전
+  if (raw.appKey) {
+    const legacyMode = raw.mode === "real" ? "real" : "paper";
+    raw = {
+      mode: legacyMode,
+      [legacyMode]: { appKey: raw.appKey, appSecret: raw.appSecret, accountNo: raw.accountNo },
+      allowRealOrders: raw.allowRealOrders === true,
+      maxOrderAmount: raw.maxOrderAmount ?? 100000,
+      autoTradeBudget: raw.autoTradeBudget ?? 1000000,
+    };
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2));
   }
 
   const mode = raw.mode === "real" ? "real" : "paper";
-  const [cano, acntPrdtCd = "01"] = raw.accountNo.split("-");
+  const profile = raw[mode];
+  if (!profile?.appKey || !profile?.appSecret || !profile?.accountNo) {
+    throw new Error(
+      mode === "real"
+        ? "실전투자 키가 아직 등록되지 않았습니다. 화면에서 실전 키를 등록해주세요."
+        : "모의투자 키가 아직 등록되지 않았습니다. 설정을 먼저 진행해주세요."
+    );
+  }
+  const [cano, acntPrdtCd = "01"] = profile.accountNo.split("-");
   if (!/^\d{8}$/.test(cano)) {
-    throw new Error('accountNo는 "계좌번호8자리-01" 형식이어야 합니다. 예: "12345678-01"');
+    throw new Error('계좌번호는 "8자리-01" 형식이어야 합니다. 예: "12345678-01"');
   }
 
   cached = {
     mode,
     // KIS_BASE_URL 환경변수는 테스트용 목(mock) 서버를 붙일 때만 사용
     baseUrl: process.env.KIS_BASE_URL ?? BASE_URLS[mode],
-    appKey: raw.appKey,
-    appSecret: raw.appSecret,
+    appKey: profile.appKey,
+    appSecret: profile.appSecret,
     cano,
     acntPrdtCd,
     allowRealOrders: raw.allowRealOrders === true,

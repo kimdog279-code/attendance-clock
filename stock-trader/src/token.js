@@ -8,7 +8,8 @@ import { loadConfig } from "./config.js";
 const EXPIRY_BUFFER_MS = 60 * 60 * 1000; // 만료 1시간 전부터는 재발급
 
 function cachePath() {
-  return path.join(loadConfig().root, ".token-cache.json");
+  // 모의/실전 토큰을 따로 캐시해 모드 전환 시 재발급을 줄인다
+  return path.join(loadConfig().root, `.token-cache-${loadConfig().mode}.json`);
 }
 
 function readCache() {

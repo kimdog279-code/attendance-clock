@@ -32,11 +32,10 @@ export async function runSetup() {
 
   const config = {
     mode: "paper",
-    appKey,
-    appSecret,
-    accountNo,
+    paper: { appKey, appSecret, accountNo },
     allowRealOrders: false,
     maxOrderAmount: 100000,
+    autoTradeBudget: 1000000,
   };
   fs.writeFileSync(configPath(), JSON.stringify(config, null, 2));
   resetConfigCache();

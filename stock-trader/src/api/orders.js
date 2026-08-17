@@ -11,8 +11,8 @@ async function placeOrder({ side, stockCode, qty, price }) {
   const config = loadConfig();
   if (config.mode === "real" && !config.allowRealOrders) {
     throw new Error(
-      "실전투자 모드에서 주문이 차단되었습니다. " +
-        "정말 실제 주문을 내려면 config.json에서 allowRealOrders를 true로 설정하세요."
+      "실전투자 모드에서 주문이 차단되어 있습니다. " +
+        "정말 실제 주문을 내려면 화면의 [⚠ 실전 안전장치]에서 '실전 주문 허용'을 켜주세요."
     );
   }
 
@@ -24,7 +24,7 @@ async function placeOrder({ side, stockCode, qty, price }) {
       throw new Error(
         `주문 금액 약 ${estimated.toLocaleString("ko-KR")}원이 상한선 ` +
           `${config.maxOrderAmount.toLocaleString("ko-KR")}원을 초과합니다. ` +
-          "의도한 주문이 맞다면 config.json의 maxOrderAmount를 조정하세요."
+          "의도한 주문이 맞다면 화면의 [⚠ 실전 안전장치]에서 상한을 조정하세요."
       );
     }
   }

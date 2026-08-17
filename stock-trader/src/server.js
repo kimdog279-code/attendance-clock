@@ -5,7 +5,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { configExists, loadConfig, configPath, resetConfigCache, projectRoot } from "./config.js";
+import { configExists, loadConfig, resetConfigCache, projectRoot, readRawConfig, writeRawConfig } from "./config.js";
 import { startEngine } from "./engine.js";
 
 const PORT = 8321;
@@ -68,28 +68,82 @@ async function handleApi(req, res, pathname, body) {
   const code = (q.get("code") ?? body?.code ?? "005930").trim();
 
   if (pathname === "/api/status") {
-    const out = { version: appVersion(), configured: configExists(), mode: null, engine: engineStatus() };
-    if (out.configured) {
-      try { out.mode = loadConfig().mode; } catch { out.configured = false; }
+    const raw = readRawConfig();
+    const out = {
+      version: appVersion(),
+      configured: false,
+      mode: raw?.mode === "real" ? "real" : "paper",
+      profiles: { paper: !!raw?.paper?.appKey || !!raw?.appKey, real: !!raw?.real?.appKey },
+      settings: {
+        allowRealOrders: raw?.allowRealOrders === true,
+        maxOrderAmount: Number(raw?.maxOrderAmount ?? 100000),
+        autoTradeBudget: Number(raw?.autoTradeBudget ?? 1000000),
+      },
+      engine: engineStatus(),
+    };
+    if (configExists()) {
+      try {
+        out.mode = loadConfig().mode;
+        out.configured = true;
+      } catch {}
     }
     return out;
   }
 
   if (pathname === "/api/setup" && req.method === "POST") {
+    const target = body.target === "real" ? "real" : "paper";
     let accountNo = String(body.accountNo ?? "").trim().replaceAll(" ", "");
     if (/^\d{8}$/.test(accountNo)) accountNo += "-01";
     if (!/^\d{8}-\d{2}$/.test(accountNo)) throw new Error("계좌번호는 숫자 8자리로 입력해주세요.");
     const appKey = String(body.appKey ?? "").trim();
     const appSecret = String(body.appSecret ?? "").trim();
     if (!appKey || appSecret.length < 20) throw new Error("APP Key 또는 APP Secret이 비어 있거나 너무 짧습니다.");
-    fs.writeFileSync(
-      configPath(),
-      JSON.stringify({ mode: "paper", appKey, appSecret, accountNo, allowRealOrders: false, maxOrderAmount: 100000, autoTradeBudget: 1000000 }, null, 2)
-    );
-    resetConfigCache();
+
+    const raw = readRawConfig() ?? {};
+    delete raw.appKey; delete raw.appSecret; delete raw.accountNo; // 구버전 잔재 제거
+    raw[target] = { appKey, appSecret, accountNo };
+    raw.mode = target;
+    raw.allowRealOrders = raw.allowRealOrders === true; // 실전 키를 넣어도 주문 허용은 별도 스위치
+    raw.maxOrderAmount = Number(raw.maxOrderAmount ?? 100000);
+    raw.autoTradeBudget = Number(raw.autoTradeBudget ?? 1000000);
+    writeRawConfig(raw);
+
     const { getPrice } = await import("./api/quotations.js");
     const p = await getPrice("005930");
     return { ok: true, samplePrice: p.price };
+  }
+
+  if (pathname === "/api/mode" && req.method === "POST") {
+    const want = body.mode === "real" ? "real" : "paper";
+    const raw = readRawConfig();
+    if (!raw) throw new Error("설정이 없습니다. 먼저 키를 등록해주세요.");
+    if (want === "real" && !raw.real?.appKey) return { needsKeys: true };
+    if (engine.running) throw new Error("자동매매가 실행 중입니다. 먼저 정지한 뒤 모드를 전환해주세요.");
+    raw.mode = want;
+    writeRawConfig(raw);
+    return { ok: true, mode: want };
+  }
+
+  if (pathname === "/api/settings" && req.method === "POST") {
+    const raw = readRawConfig();
+    if (!raw) throw new Error("설정이 없습니다.");
+    if (typeof body.allowRealOrders === "boolean") raw.allowRealOrders = body.allowRealOrders;
+    if (body.maxOrderAmount != null) {
+      const v = Number(body.maxOrderAmount);
+      if (!Number.isFinite(v) || v < 0) throw new Error("주문 상한 금액이 올바르지 않습니다.");
+      raw.maxOrderAmount = v;
+    }
+    if (body.autoTradeBudget != null) {
+      const v = Number(body.autoTradeBudget);
+      if (!Number.isFinite(v) || v < 10000) throw new Error("자동매매 예산은 1만원 이상이어야 합니다.");
+      raw.autoTradeBudget = v;
+    }
+    writeRawConfig(raw);
+    return {
+      allowRealOrders: raw.allowRealOrders === true,
+      maxOrderAmount: raw.maxOrderAmount,
+      autoTradeBudget: raw.autoTradeBudget,
+    };
   }
 
   if (pathname === "/api/search") {

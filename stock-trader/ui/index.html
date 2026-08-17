@@ -112,6 +112,9 @@
           <button class="small" id="btnBacktest">실행</button>
         </h2>
         <div class="row" style="margin-bottom: 10px">
+          <select id="btStrategy"></select>
+        </div>
+        <div class="row" id="smaParams" style="margin-bottom: 10px">
           <span class="hint">이동평균:</span>
           <input type="number" id="inShort" value="5" min="2" style="width: 64px" /> 일
           <span class="hint">/</span>
@@ -125,7 +128,10 @@
           <span class="spacer"></span>
           <button class="small" id="btnEngine">시작</button>
         </h2>
-        <div class="hint" style="margin-bottom: 6px">전략: <b id="engStrategy">이동평균 크로스 5/20일</b></div>
+        <div class="row" style="margin-bottom: 8px">
+          <span class="hint">전략:</span>
+          <select id="engStrategySel"></select>
+        </div>
         <div class="row">
           <label><input type="radio" name="engMode" value="practice" checked /> 연습 (신호만 알림)</label>
           <label><input type="radio" name="engMode" value="live" /> 주문 실행 (모의투자)</label>

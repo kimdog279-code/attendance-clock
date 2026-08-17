@@ -35,9 +35,40 @@ async function init() {
   $("#dash").classList.remove("hidden");
 
   refreshAll();
+  loadStrategyCatalog().catch(() => {});
   syncEngine(st.engine);
   checkUpdate();
   setInterval(() => loadPrice().catch(() => {}), 15000);
+}
+
+// ── 전략 목록 채우기 ───────────────────────────────────────────
+async function loadStrategyCatalog() {
+  const catalog = await api("/api/strategies");
+  const optionHtml = catalog
+    .map(
+      (s) =>
+        `<optgroup label="${s.name}">` +
+        s.options.map((o) => `<option value='${JSON.stringify({ id: s.id, params: o.params })}'>${o.label}</option>`).join("") +
+        "</optgroup>"
+    )
+    .join("");
+  $("#btStrategy").innerHTML =
+    `<option value="custom">이동평균 크로스 — 기간 직접 입력</option>` + optionHtml;
+  $("#engStrategySel").innerHTML = optionHtml;
+  $("#btStrategy").addEventListener("change", () => {
+    $("#smaParams").style.display = $("#btStrategy").value === "custom" ? "" : "none";
+  });
+}
+
+// 자동매매 카드의 전략 선택값 읽기
+function selectedEngineStrategy() {
+  const sel = $("#engStrategySel");
+  const opt = sel.selectedOptions[0];
+  try {
+    return { ...JSON.parse(sel.value), label: opt ? opt.textContent : "" };
+  } catch {
+    return { id: "sma", params: { short: 5, long: 20 }, label: "이동평균 크로스 5/20일" };
+  }
 }
 
 async function refreshAll() {
@@ -220,11 +251,19 @@ $("#btnBacktest").addEventListener("click", async () => {
   const el = $("#btResult");
   el.innerHTML = "계산 중...";
   try {
-    const s = $("#inShort").value, l = $("#inLong").value;
-    const r = await api(`/api/backtest?code=${currentCode}&short=${s}&long=${l}`);
+    const sel = $("#btStrategy").value;
+    let qs;
+    if (sel === "custom" || sel === "") {
+      qs = `strategy=sma&short=${$("#inShort").value}&long=${$("#inLong").value}`;
+    } else {
+      const { id, params } = JSON.parse(sel);
+      qs = `strategy=${id}&params=${encodeURIComponent(JSON.stringify(params))}`;
+    }
+    const r = await api(`/api/backtest?code=${currentCode}&${qs}`);
     const pct = (x) => (x * 100).toFixed(1) + "%";
     const cls = (x) => (x >= 0 ? "var(--up)" : "var(--down)");
     el.innerHTML = `
+      ${r.label ? `<div class="hint" style="margin-bottom:8px">전략: <b>${r.label}</b></div>` : ""}
       <div class="stats">
         <div class="stat"><div class="k">이 전략을 썼다면</div><div class="v" style="color:${cls(r.totalReturn)}">${pct(r.totalReturn)}</div></div>
         <div class="stat"><div class="k">그냥 사서 보유했다면</div><div class="v" style="color:${cls(r.buyHoldReturn)}">${pct(r.buyHoldReturn)}</div></div>
@@ -261,8 +300,6 @@ $("#btnSell").addEventListener("click", () => placeOrder("sell"));
 $("#btnBalance").addEventListener("click", () => loadBalance().catch(() => {}));
 
 // ── 전략 추천 ──────────────────────────────────────────────────
-let chosenStrategy = { id: "sma", params: { short: 5, long: 20 }, label: "이동평균 크로스 5/20일" };
-
 $("#btnRecommend").addEventListener("click", async () => {
   const el = $("#recResult");
   el.innerHTML = "분석 중... (전략 4종 × 여러 설정을 전부 시뮬레이션합니다)";
@@ -309,9 +346,15 @@ $("#btnRecommend").addEventListener("click", async () => {
       </div>`;
     if (holdWins) return;
     $("#btnUseRec").addEventListener("click", () => {
-      chosenStrategy = { id: rec.id, params: rec.params, label: rec.label };
-      $("#engStrategy").textContent = rec.label;
-      $("#engStrategy").scrollIntoView({ behavior: "smooth", block: "center" });
+      const sel = $("#engStrategySel");
+      const want = JSON.stringify({ id: rec.id, params: rec.params });
+      for (const opt of sel.options) {
+        if (opt.value === want) {
+          sel.value = want;
+          break;
+        }
+      }
+      sel.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   } catch (e) {
     el.innerHTML = `<span class="msg err">${e.message}</span>`;
@@ -352,10 +395,11 @@ $("#btnEngine").addEventListener("click", async () => {
       syncEngine(await api("/api/engine"));
     } else {
       const live = document.querySelector('input[name="engMode"]:checked').value === "live";
-      if (live && !confirm(`주문 실행 모드입니다.\n전략: ${chosenStrategy.label}\n신호가 오면 모의투자 계좌에 진짜 주문이 나갑니다. 시작할까요?`)) return;
+      const strat = selectedEngineStrategy();
+      if (live && !confirm(`주문 실행 모드입니다.\n전략: ${strat.label}\n신호가 오면 모의투자 계좌에 진짜 주문이 나갑니다. 시작할까요?`)) return;
       await api("/api/engine/start", {
         method: "POST",
-        body: { code: currentCode, live, strategy: { id: chosenStrategy.id, params: chosenStrategy.params } },
+        body: { code: currentCode, live, strategy: { id: strat.id, params: strat.params } },
       });
       $("#engineLog").textContent = "시작하는 중...";
       setTimeout(async () => syncEngine(await api("/api/engine")), 800);

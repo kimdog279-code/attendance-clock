@@ -113,17 +113,40 @@ async function handleApi(req, res, pathname, body) {
     return { candles: loadDaily(code).slice(-days) };
   }
 
+  if (pathname === "/api/strategies") {
+    const { STRATEGIES } = await import("./strategies.js");
+    return Object.entries(STRATEGIES).map(([id, st]) => ({
+      id,
+      name: st.name,
+      options: st.grid.map((p) => ({ label: st.label(p), params: p })),
+    }));
+  }
+
   if (pathname === "/api/backtest") {
     const { loadDaily } = await import("./store.js");
-    const { smaCross } = await import("./backtest.js");
+    const { STRATEGIES, buyHold } = await import("./strategies.js");
     const candles = loadDaily(code);
-    if (candles.length === 0) throw new Error("저장된 데이터가 없습니다. 먼저 [데이터 수집]을 눌러주세요.");
-    const result = smaCross(candles, {
-      shortPeriod: Number(q.get("short") ?? 5),
-      longPeriod: Number(q.get("long") ?? 20),
-    });
-    delete result.trades;
-    return result;
+    if (candles.length < 150) throw new Error("데이터가 부족합니다. 먼저 [데이터 수집]을 눌러주세요.");
+    const id = q.get("strategy") ?? "sma";
+    const st = STRATEGIES[id];
+    if (!st) throw new Error("알 수 없는 전략입니다.");
+    let params = null;
+    try {
+      if (q.get("params")) params = JSON.parse(q.get("params"));
+    } catch {}
+    if (!params) {
+      params = id === "sma"
+        ? { short: Number(q.get("short") ?? 5), long: Number(q.get("long") ?? 20) }
+        : st.grid[0];
+    }
+    const r = st.backtest(candles, params);
+    return {
+      ...r,
+      label: st.label(params),
+      buyHoldReturn: buyHold(candles).totalReturn,
+      period: `${candles[0].date} ~ ${candles[candles.length - 1].date}`,
+      initialCash: 10_000_000,
+    };
   }
 
   if (pathname === "/api/order" && req.method === "POST") {

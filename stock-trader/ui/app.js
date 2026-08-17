@@ -36,6 +36,7 @@ async function init() {
 
   refreshAll();
   loadStrategyCatalog().catch(() => {});
+  loadWatchlist();
   syncEngine(st.engine);
   checkUpdate();
   setInterval(() => loadPrice().catch(() => {}), 15000);
@@ -420,25 +421,73 @@ const KNOWN_NAMES = {
 
 async function showStockName(code) {
   const el = $("#stockName");
-  el.textContent = KNOWN_NAMES[code] ?? "";
+  let name = KNOWN_NAMES[code] ?? "";
+  el.textContent = name;
   try {
     const r = await api("/api/name?code=" + code);
-    if (r.name) el.textContent = r.name;
-    else if (!KNOWN_NAMES[code]) el.textContent = "이름 확인 불가 — 코드를 다시 확인하세요";
+    if (r.name) name = r.name;
+    if (name) el.textContent = name;
+    else el.textContent = "이름 확인 불가 — 코드를 다시 확인하세요";
+  } catch {}
+  return name; // 경고 문구가 아니라 실제 이름(또는 빈 값)만 반환
+}
+
+// ── 최근 조회 · 관심종목 ───────────────────────────────────────
+let watch = { favorites: [], recent: [] };
+
+function renderChips() {
+  const favCodes = new Set(watch.favorites.map((f) => f.code));
+  const items = [
+    ...watch.favorites.map((f) => ({ ...f, fav: true })),
+    ...watch.recent.filter((r) => !favCodes.has(r.code)).slice(0, 6),
+  ];
+  if (items.length === 0) {
+    // 처음 사용 — 시작용 예시 종목
+    items.push({ code: "005930", name: "삼성전자" }, { code: "000660", name: "SK하이닉스" });
+  }
+  $("#chips").innerHTML = items
+    .map(
+      (it) => `<button class="chip ${it.code === currentCode ? "on" : ""}" data-code="${it.code}" data-name="${it.name ?? ""}">
+        ${it.fav ? "★ " : ""}${it.name || it.code}</button>`
+    )
+    .join("");
+  document.querySelectorAll("#chips .chip").forEach((c) =>
+    c.addEventListener("click", () => setCode(c.dataset.code, c.dataset.name))
+  );
+  const isFav = favCodes.has(currentCode);
+  $("#btnFav").textContent = isFav ? "★ 관심해제" : "☆ 관심등록";
+}
+
+async function loadWatchlist() {
+  try {
+    watch = await api("/api/watchlist");
+    renderChips();
   } catch {}
 }
+
+async function recordRecent(code, name) {
+  try {
+    watch = await api("/api/watchlist", { method: "POST", body: { action: "recent", code, name } });
+    renderChips();
+  } catch {}
+}
+
+$("#btnFav").addEventListener("click", async () => {
+  const name = KNOWN_NAMES[currentCode] ?? $("#stockName").textContent.replace(/^이름 확인.*$/, "");
+  try {
+    watch = await api("/api/watchlist", { method: "POST", body: { action: "favorite", code: currentCode, name } });
+    renderChips();
+  } catch {}
+});
 
 function setCode(code, name) {
   currentCode = code;
   $("#inCode").value = code;
   $("#stockName").textContent = name ?? "";
-  document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c.dataset.code === code));
-  showStockName(code);
+  renderChips();
+  showStockName(code).then((resolved) => recordRecent(code, resolved || name || ""));
   refreshAll();
 }
-document.querySelectorAll(".chip").forEach((c) =>
-  c.addEventListener("click", () => setCode(c.dataset.code, c.textContent))
-);
 $("#btnGo").addEventListener("click", () => setCode($("#inCode").value.trim()));
 $("#inCode").addEventListener("keydown", (e) => { if (e.key === "Enter") setCode($("#inCode").value.trim()); });
 

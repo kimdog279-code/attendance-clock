@@ -92,6 +92,31 @@ async function handleApi(req, res, pathname, body) {
     return { ok: true, samplePrice: p.price };
   }
 
+  if (pathname === "/api/watchlist") {
+    const file = path.join(projectRoot(), "data", "watchlist.json");
+    const load = () => {
+      try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return { favorites: [], recent: [] }; }
+    };
+    if (req.method === "POST") {
+      const w = load();
+      const c = String(body.code ?? "").trim();
+      const name = String(body.name ?? "").trim();
+      if (!/^\d{6}$/.test(c)) throw new Error("종목코드는 숫자 6자리여야 합니다.");
+      if (body.action === "favorite") {
+        const i = w.favorites.findIndex((f) => f.code === c);
+        if (i >= 0) w.favorites.splice(i, 1);
+        else w.favorites.unshift({ code: c, name });
+      } else {
+        w.recent = [{ code: c, name }, ...w.recent.filter((r) => r.code !== c)].slice(0, 8);
+        const f = w.favorites.find((f) => f.code === c);
+        if (f && name) f.name = name; // 이름을 새로 알게 되면 관심종목에도 반영
+      }
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(w, null, 2));
+    }
+    return load();
+  }
+
   if (pathname === "/api/name") {
     // 상품기본조회로 종목명 시도 — 모의투자에서 미지원일 수 있으므로 실패해도 빈 값으로 응답
     try {

@@ -50,16 +50,15 @@
     <div class="stockbar">
       <input type="text" id="inCode" value="005930" maxlength="6" />
       <button class="small ghost" id="btnGo">조회</button>
-      <button class="chip" data-code="005930">삼성전자</button>
-      <button class="chip" data-code="000660">SK하이닉스</button>
-      <button class="chip" data-code="035720">카카오</button>
-      <button class="chip" data-code="005380">현대차</button>
-      <button class="chip" data-code="035420">NAVER</button>
+      <span id="chips" class="row" style="gap: 8px"></span>
     </div>
 
     <div class="grid">
       <div class="card third">
-        <h2>현재가 <span id="stockName" class="hint"></span></h2>
+        <h2>현재가 <span id="stockName" class="hint"></span>
+          <span class="spacer"></span>
+          <button class="small ghost" id="btnFav">☆ 관심등록</button>
+        </h2>
         <div class="hero"><span id="price">-</span><span class="unit"> 원</span></div>
         <div class="delta" id="delta"></div>
         <div class="subline" id="priceSub"></div>

@@ -6,6 +6,22 @@ import { getAccessToken } from "./token.js";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_RATE_LIMIT_RETRIES = 5;
 
+// 전역 호출 줄 세우기: 동시에 여러 요청이 몰려도 순서대로,
+// 최소 간격(모의 0.55초 / 실전 0.06초)을 지키며 나가게 한다.
+// 이러면 증권사 초당 한도(모의 2건/실전 20건)에 애초에 걸리지 않는다.
+let queueTail = Promise.resolve();
+let lastCallAt = 0;
+
+function waitForTurn(minGapMs) {
+  const turn = queueTail.then(async () => {
+    const wait = lastCallAt + minGapMs - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastCallAt = Date.now();
+  });
+  queueTail = turn.catch(() => {});
+  return turn;
+}
+
 export async function kisRequest({ method = "GET", path, trId, params, body }) {
   const config = loadConfig();
   const token = await getAccessToken();
@@ -16,6 +32,7 @@ export async function kisRequest({ method = "GET", path, trId, params, body }) {
   }
 
   for (let attempt = 0; ; attempt++) {
+    await waitForTurn(config.mode === "paper" ? 550 : 60);
     const res = await fetch(url, {
       method,
       headers: {

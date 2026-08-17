@@ -61,7 +61,10 @@ async function init() {
     $("#setMax").value = st.settings.maxOrderAmount;
     const liveRadio = document.querySelector('input[name="engMode"][value="live"]');
     liveRadio.disabled = true;
-    liveRadio.closest("label").style.opacity = "0.45";
+    const liveLabel = liveRadio.closest("label");
+    liveLabel.style.opacity = "0.55";
+    liveLabel.innerHTML =
+      '<input type="radio" name="engMode" value="live" disabled /> 자동 주문 🔒 — 실전은 모의투자 검증 후 지원 (모의 모드에서는 사용 가능)';
   }
 
   refreshAll();

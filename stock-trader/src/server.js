@@ -355,6 +355,31 @@ const server = http.createServer((req, res) => {
 
 const URL_STR = `http://127.0.0.1:${PORT}`;
 
+// 프로그램이 켜져 있는 동안 Windows가 절전 모드로 들어가지 않게 막는다.
+// (화면은 평소처럼 꺼지고, 시스템만 깨어 있음. 프로그램 종료 시 원래대로)
+function keepAwake() {
+  if (process.platform !== "win32") return;
+  const script = [
+    "$sig = '[DllImport(\"kernel32.dll\")] public static extern uint SetThreadExecutionState(uint esFlags);';",
+    "$p = Add-Type -MemberDefinition $sig -Name Power -Namespace Win32 -PassThru;",
+    "while ($true) {",
+    `  if (-not (Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue)) { exit }`,
+    '  [void]$p::SetThreadExecutionState([uint32]"0x80000001");', // ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+    "  Start-Sleep -Seconds 50",
+    "}",
+  ].join(" ");
+  try {
+    const child = spawn("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
+      stdio: "ignore",
+    });
+    child.unref();
+    process.on("exit", () => {
+      try { child.kill(); } catch {}
+    });
+    console.log("💤 절전 방지 켜짐 — 프로그램이 켜져 있는 동안 컴퓨터가 잠들지 않습니다 (화면은 꺼져도 OK)");
+  } catch {}
+}
+
 function openBrowser() {
   if (process.env.NO_OPEN === "1") return;
   try {
@@ -380,5 +405,6 @@ server.on("error", (err) => {
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`주식 매매 프로그램이 켜졌습니다: ${URL_STR}`);
   console.log("이 검은 창은 프로그램의 엔진입니다. 닫으면 프로그램도 꺼져요. (최소화는 OK)");
+  keepAwake();
   openBrowser();
 });

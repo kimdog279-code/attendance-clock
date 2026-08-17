@@ -488,8 +488,69 @@ function setCode(code, name) {
   showStockName(code).then((resolved) => recordRecent(code, resolved || name || ""));
   refreshAll();
 }
-$("#btnGo").addEventListener("click", () => setCode($("#inCode").value.trim()));
-$("#inCode").addEventListener("keydown", (e) => { if (e.key === "Enter") setCode($("#inCode").value.trim()); });
+// ── 회사명/코드 검색 ───────────────────────────────────────────
+let searchTimer = null;
+
+function hideDrop() {
+  $("#searchDrop").classList.add("hidden");
+}
+
+function showDropNote(text) {
+  const drop = $("#searchDrop");
+  drop.innerHTML = `<div class="sd-note">${text}</div>`;
+  drop.classList.remove("hidden");
+}
+
+async function runSearch(query, { autoPickSingle = false } = {}) {
+  showDropNote("검색 중... (처음이면 종목 목록을 내려받느라 몇 초 걸립니다)");
+  try {
+    const { results } = await api("/api/search?q=" + encodeURIComponent(query));
+    if (results.length === 0) return showDropNote("검색 결과가 없습니다");
+    if (autoPickSingle && results.length === 1) {
+      hideDrop();
+      return setCode(results[0].code, results[0].name);
+    }
+    const drop = $("#searchDrop");
+    drop.innerHTML = results
+      .map((r) => `<div class="sd-item" data-code="${r.code}" data-name="${r.name}">
+        <span>${r.name}</span><span class="code">${r.code}</span><span class="mkt">${r.market ?? ""}</span></div>`)
+      .join("");
+    drop.classList.remove("hidden");
+    drop.querySelectorAll(".sd-item").forEach((it) =>
+      it.addEventListener("click", () => {
+        hideDrop();
+        setCode(it.dataset.code, it.dataset.name);
+      })
+    );
+  } catch (e) {
+    showDropNote("검색 실패: " + e.message);
+  }
+}
+
+function submitCodeInput() {
+  const v = $("#inCode").value.trim();
+  if (/^\d{6}$/.test(v)) {
+    hideDrop();
+    setCode(v);
+  } else if (v.length >= 1) {
+    runSearch(v, { autoPickSingle: true });
+  }
+}
+
+$("#btnGo").addEventListener("click", submitCodeInput);
+$("#inCode").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitCodeInput();
+  if (e.key === "Escape") hideDrop();
+});
+$("#inCode").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  const v = $("#inCode").value.trim();
+  if (/^\d+$/.test(v) || v.length < 2) return hideDrop();
+  searchTimer = setTimeout(() => runSearch(v), 350);
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".stockbar")) hideDrop();
+});
 
 // ── 설정 ───────────────────────────────────────────────────────
 $("#btnSetup").addEventListener("click", async () => {

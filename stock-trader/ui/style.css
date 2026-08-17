@@ -209,6 +209,32 @@ button.small { padding: 5px 12px; font-size: 13px; }
 .msg.err { color: var(--up); }
 .msg.ok { color: var(--good); }
 
+/* 회사명 검색 드롭다운 */
+#searchDrop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 240px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  z-index: 20;
+  overflow: hidden;
+}
+#searchDrop .sd-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+#searchDrop .sd-item:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#searchDrop .sd-item .code { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+#searchDrop .sd-item .mkt { color: var(--muted); font-size: 11px; margin-left: auto; }
+#searchDrop .sd-note { padding: 8px 12px; font-size: 13px; color: var(--muted); }
+
 /* 자동매매 로그 */
 #engineLog {
   background: var(--page);

@@ -48,7 +48,10 @@
   <!-- 대시보드 -->
   <main id="dash" class="hidden">
     <div class="stockbar">
-      <input type="text" id="inCode" value="005930" maxlength="6" />
+      <span style="position: relative">
+        <input type="text" id="inCode" value="005930" placeholder="회사명 또는 코드" style="width: 170px" />
+        <div id="searchDrop" class="hidden"></div>
+      </span>
       <button class="small ghost" id="btnGo">조회</button>
       <span id="chips" class="row" style="gap: 8px"></span>
     </div>

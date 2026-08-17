@@ -10,6 +10,7 @@
   "src/update.js",
   "src/engine.js",
   "src/strategies.js",
+  "src/stockmaster.js",
   "src/server.js",
   "ui/index.html",
   "ui/app.js",

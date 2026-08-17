@@ -92,6 +92,11 @@ async function handleApi(req, res, pathname, body) {
     return { ok: true, samplePrice: p.price };
   }
 
+  if (pathname === "/api/search") {
+    const { searchStocks } = await import("./stockmaster.js");
+    return { results: await searchStocks(q.get("q") ?? "") };
+  }
+
   if (pathname === "/api/watchlist") {
     const file = path.join(projectRoot(), "data", "watchlist.json");
     const load = () => {
@@ -126,7 +131,14 @@ async function handleApi(req, res, pathname, body) {
         trId: "CTPF1604R",
         params: { PDNO: code, PRDT_TYPE_CD: "300" },
       });
-      return { name: data.output?.prdt_abrv_name ?? data.output?.prdt_name ?? "" };
+      const name = data.output?.prdt_abrv_name ?? data.output?.prdt_name ?? "";
+      if (name) return { name };
+    } catch {}
+    // 보조: 종목 마스터 목록에서 찾기
+    try {
+      const { searchStocks } = await import("./stockmaster.js");
+      const hit = (await searchStocks(code)).find((s) => s.code === code);
+      return { name: hit?.name ?? "" };
     } catch {
       return { name: "" };
     }

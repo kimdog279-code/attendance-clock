@@ -229,7 +229,12 @@ export function recommend(candles) {
 
   const bh = buyHold(candles.slice(-validateDays));
   const best = finalists[0];
+  // 시험 기간에서 단순 보유가 최고 전략을 이겼거나, 최고 전략이 매매를 아예 안 했다면
+  // 정직하게 "보유"를 최종 답으로 선언한다.
+  const verdict =
+    score(bh) > score(best.validate) || best.validate.tradeCount === 0 ? "hold" : "strategy";
   return {
+    verdict,
     period: {
       train: `${train[0].date} ~ ${train[train.length - 1].date}`,
       validate: `${candles[candles.length - validateDays].date} ~ ${candles[candles.length - 1].date}`,

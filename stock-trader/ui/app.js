@@ -270,31 +270,44 @@ $("#btnRecommend").addEventListener("click", async () => {
     const r = await api("/api/recommend?code=" + currentCode);
     const pct = (x) => (x * 100).toFixed(1) + "%";
     const rec = r.recommendation;
+    const holdWins = r.verdict === "hold";
+    const col = (x) => (x >= 0 ? "var(--up)" : "var(--down)");
+    const trophy = (won) => (won ? "🏆 " : "");
+    const bhRow = `<tr>
+      <td>${trophy(holdWins)}단순 보유 (사서 안 팔기)</td>
+      <td class="num" style="color:${col(r.buyHoldValidate.totalReturn)}">${pct(r.buyHoldValidate.totalReturn)}</td>
+      <td class="num">${pct(r.buyHoldValidate.maxDrawdown)}</td>
+      <td class="num">-</td></tr>`;
     const rows = r.finalists
       .map(
         (f, i) => `<tr>
-          <td>${i === 0 ? "🏆 " : ""}${f.label}</td>
-          <td class="num" style="color:${f.validate.totalReturn >= 0 ? "var(--up)" : "var(--down)"}">${pct(f.validate.totalReturn)}</td>
+          <td>${trophy(!holdWins && i === 0)}${f.label}${f.validate.tradeCount === 0 ? ' <span class="hint">(시험 기간에 신호 없음)</span>' : ""}</td>
+          <td class="num" style="color:${col(f.validate.totalReturn)}">${pct(f.validate.totalReturn)}</td>
           <td class="num">${pct(f.validate.maxDrawdown)}</td>
           <td class="num">${f.validate.tradeCount}회</td></tr>`
       )
       .join("");
+    const headline = holdWins
+      ? `<b>결론: 이 종목은 "사서 들고 있기"가 가장 나았습니다</b><br/>
+         시험 기간(최근 1년) 보유 수익률 <b style="color:${col(r.buyHoldValidate.totalReturn)}">${pct(r.buyHoldValidate.totalReturn)}</b>
+         — 어떤 타이밍 전략도 이걸 이기지 못했어요.
+         타이밍 매매를 원하면 표에서 전략을 고를 수 있지만, 이 종목에서는 근거가 약합니다.`
+      : `<b>추천: ${rec.label}</b><br/>
+         시험 기간(최근 1년) 수익률 <b style="color:${col(rec.validate.totalReturn)}">${pct(rec.validate.totalReturn)}</b>
+         (그냥 보유했다면 ${pct(r.buyHoldValidate.totalReturn)})
+         · 최대 하락폭 ${pct(rec.validate.maxDrawdown)} · 매매 ${rec.validate.tradeCount}회`;
     el.innerHTML = `
-      <div class="notice" style="margin-bottom:12px">
-        <b>추천: ${rec.label}</b><br/>
-        시험 기간(최근 1년) 수익률 <b style="color:${rec.validate.totalReturn >= 0 ? "var(--up)" : "var(--down)"}">${pct(rec.validate.totalReturn)}</b>
-        (그냥 보유했다면 ${pct(r.buyHoldValidate.totalReturn)})
-        · 최대 하락폭 ${pct(rec.validate.maxDrawdown)}
-        ${rec.beatsBuyHold ? "" : "<br/>⚠ 시험 기간에는 단순 보유가 더 나았습니다. 이 종목은 전략 매매보다 보유가 유리했을 수 있어요."}
-      </div>
+      <div class="notice" style="margin-bottom:12px">${headline}</div>
       <table>
-        <tr><th>최종 후보 (연습 기간 상위 3개)</th><th class="num">시험 수익률</th><th class="num">최대 하락폭</th><th class="num">매매</th></tr>
+        <tr><th>비교 (시험 기간 성적)</th><th class="num">시험 수익률</th><th class="num">최대 하락폭</th><th class="num">매매</th></tr>
+        ${bhRow}
         ${rows}
       </table>
       <div class="row" style="margin-top:10px">
-        <button class="small" id="btnUseRec">이 전략을 자동매매에 적용</button>
+        ${holdWins ? "" : '<button class="small" id="btnUseRec">이 전략을 자동매매에 적용</button>'}
         <span class="hint">연습 ${r.period.train} → 시험 ${r.period.validate} · 총 ${r.candidatesTried}개 조합 비교 · 과거 성과일 뿐 미래 보장이 아닙니다</span>
       </div>`;
+    if (holdWins) return;
     $("#btnUseRec").addEventListener("click", () => {
       chosenStrategy = { id: rec.id, params: rec.params, label: rec.label };
       $("#engStrategy").textContent = rec.label;

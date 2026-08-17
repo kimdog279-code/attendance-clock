@@ -410,52 +410,69 @@ $("#btnRecommend").addEventListener("click", async () => {
 });
 
 // ── 자동매매 ───────────────────────────────────────────────────
+function engineName(code) {
+  return (
+    watch.favorites.find((f) => f.code === code)?.name ||
+    watch.recent.find((r) => r.code === code)?.name ||
+    KNOWN_NAMES[code] ||
+    code
+  );
+}
+
 function syncEngine(st) {
-  const btn = $("#btnEngine");
   const logEl = $("#engineLog");
-  if (st.running) {
-    btn.textContent = "정지";
-    btn.classList.add("sell");
-    $("#engineDot").classList.remove("hidden");
-    if (st.logs.length) {
-      logEl.textContent = st.logs.join("\n");
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-    if (!engineTimer) {
-      engineTimer = setInterval(async () => {
-        try { syncEngine(await api("/api/engine")); } catch {}
-      }, 3000);
-    }
-  } else {
-    btn.textContent = "시작";
-    btn.classList.remove("sell");
-    $("#engineDot").classList.add("hidden");
-    if (engineTimer) { clearInterval(engineTimer); engineTimer = null; }
-    if (st.logs?.length) logEl.textContent = st.logs.join("\n") + "\n(정지됨)";
+  const list = $("#engineList");
+  const runningEngines = st.engines.filter((e) => e.running);
+
+  list.innerHTML = runningEngines
+    .map(
+      (e) => `<div class="eng-row">
+        <span class="pulse"></span>
+        <span class="who">${engineName(e.code)} <span class="hint">${e.code}</span></span>
+        <span class="what">${e.strategyLabel ?? ""}</span>
+        <span class="tag ${e.live ? "live" : "practice"}">${e.live ? (MODE === "real" ? "🚨 실전 주문" : "모의 주문") : "연습"}</span>
+        ${e.position ? '<span class="hint">보유 중</span>' : ""}
+        <button class="small ghost" data-stop="${e.code}">정지</button>
+      </div>`
+    )
+    .join("");
+  list.querySelectorAll("[data-stop]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await api("/api/engine/stop", { method: "POST", body: { code: b.dataset.stop } });
+      setTimeout(async () => syncEngine(await api("/api/engine")), 600);
+    })
+  );
+
+  $("#engineDot").classList.toggle("hidden", runningEngines.length === 0);
+  if (st.logs?.length) {
+    logEl.textContent = st.logs.join("\n") + (runningEngines.length === 0 ? "\n(모두 정지됨)" : "");
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  if (runningEngines.length > 0 && !engineTimer) {
+    engineTimer = setInterval(async () => {
+      try { syncEngine(await api("/api/engine")); } catch {}
+    }, 3000);
+  } else if (runningEngines.length === 0 && engineTimer) {
+    clearInterval(engineTimer);
+    engineTimer = null;
   }
 }
 
 $("#btnEngine").addEventListener("click", async () => {
-  const running = $("#btnEngine").textContent === "정지";
   try {
-    if (running) {
-      await api("/api/engine/stop", { method: "POST" });
-      syncEngine(await api("/api/engine"));
-    } else {
-      const live = document.querySelector('input[name="engMode"]:checked').value === "live";
-      const strat = selectedEngineStrategy();
-      const liveConfirm =
-        MODE === "real"
-          ? `🚨 실전 자동매매를 시작합니다 — 진짜 돈입니다!\n전략: ${strat.label}\n종목: ${currentCode}\n\n신호가 오면 사람 확인 없이 실전 계좌에 주문이 나갑니다.\n하루 손실 한도에 도달하면 자동으로 멈춥니다.\n\n시작할까요?`
-          : `주문 실행 모드입니다.\n전략: ${strat.label}\n신호가 오면 모의투자 계좌에 진짜 주문이 나갑니다. 시작할까요?`;
-      if (live && !confirm(liveConfirm)) return;
-      await api("/api/engine/start", {
-        method: "POST",
-        body: { code: currentCode, live, strategy: { id: strat.id, params: strat.params } },
-      });
-      $("#engineLog").textContent = "시작하는 중...";
-      setTimeout(async () => syncEngine(await api("/api/engine")), 800);
-    }
+    const live = document.querySelector('input[name="engMode"]:checked').value === "live";
+    const strat = selectedEngineStrategy();
+    const liveConfirm =
+      MODE === "real"
+        ? `🚨 실전 자동매매를 시작합니다 — 진짜 돈입니다!\n전략: ${strat.label}\n종목: ${engineName(currentCode)} (${currentCode})\n\n신호가 오면 사람 확인 없이 실전 계좌에 주문이 나갑니다.\n하루 손실 한도에 도달하면 자동으로 멈춥니다.\n\n시작할까요?`
+        : `주문 실행 모드입니다.\n전략: ${strat.label}\n종목: ${engineName(currentCode)} (${currentCode})\n신호가 오면 모의투자 계좌에 진짜 주문이 나갑니다. 시작할까요?`;
+    if (live && !confirm(liveConfirm)) return;
+    await api("/api/engine/start", {
+      method: "POST",
+      body: { code: currentCode, live, strategy: { id: strat.id, params: strat.params } },
+    });
+    setTimeout(async () => syncEngine(await api("/api/engine")), 800);
   } catch (e) {
     $("#engineLog").textContent = e.message;
   }

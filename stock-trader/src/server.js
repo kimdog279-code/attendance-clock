@@ -20,46 +20,55 @@ function appVersion() {
   }
 }
 
-// ── 자동매매 엔진 관리 (서버당 1개) ─────────────────────────────
-const engine = { running: false, code: null, live: false, logs: [], stop: null, strategyLabel: null };
+// ── 자동매매 엔진 관리 (동시 여러 종목) ─────────────────────────
+const MAX_ENGINES = 5;
+const engines = new Map(); // code → { code, live, strategyLabel, running, stop }
+const engineLogs = []; // 모든 엔진의 로그를 한 줄기로 (종목 접두어 포함)
 
-function engineLog(msg) {
+function pushEngineLog(prefix, msg) {
   for (const line of String(msg).split("\n")) {
     if (line.trim() === "") continue;
-    engine.logs.push(line);
+    engineLogs.push(prefix + line);
   }
-  if (engine.logs.length > 300) engine.logs.splice(0, engine.logs.length - 300);
-  console.log(msg);
+  if (engineLogs.length > 400) engineLogs.splice(0, engineLogs.length - 400);
+  console.log(prefix + msg);
 }
 
 async function startEngineBg(code, live, strategy) {
-  if (engine.running) throw new Error("자동매매가 이미 실행 중입니다. 먼저 정지해주세요.");
+  if (engines.get(code)?.running) throw new Error("이 종목은 이미 자동매매 중입니다.");
+  const runningCount = [...engines.values()].filter((e) => e.running).length;
+  if (runningCount >= MAX_ENGINES) {
+    throw new Error(`자동매매는 동시에 ${MAX_ENGINES}종목까지만 가능합니다. 다른 종목을 먼저 정지해주세요.`);
+  }
   const { STRATEGIES } = await import("./strategies.js");
   const id = strategy?.id && STRATEGIES[strategy.id] ? strategy.id : "sma";
   const params = strategy?.params ?? { short: 5, long: 20 };
   let stopResolver;
   const stopPromise = new Promise((resolve) => (stopResolver = resolve));
-  Object.assign(engine, {
-    running: true, code, live, logs: [], stop: stopResolver,
+  const ent = {
+    code, live, running: true, stop: stopResolver,
     strategyLabel: STRATEGIES[id].label(params),
-  });
-  startEngine({ code, live, stopPromise, strategy: { id, params }, log: engineLog })
-    .catch((err) => engineLog(`엔진 오류로 중단: ${err.message}`))
+  };
+  engines.set(code, ent);
+  const log = (msg) => pushEngineLog(`[${code}] `, msg);
+  startEngine({ code, live, stopPromise, strategy: { id, params }, log })
+    .catch((err) => log(`엔진 오류로 중단: ${err.message}`))
     .finally(() => {
-      engine.running = false;
+      ent.running = false;
     });
 }
 
 function engineStatus() {
-  let position = null;
-  if (engine.code) {
+  const list = [...engines.values()].map((e) => {
+    let position = null;
     try {
       position = JSON.parse(
-        fs.readFileSync(path.join(projectRoot(), "data", `engine-${engine.code}.json`), "utf8")
+        fs.readFileSync(path.join(projectRoot(), "data", `engine-${e.code}.json`), "utf8")
       ).position;
     } catch {}
-  }
-  return { running: engine.running, code: engine.code, live: engine.live, strategyLabel: engine.strategyLabel, logs: engine.logs.slice(-40), position };
+    return { code: e.code, live: e.live, running: e.running, strategyLabel: e.strategyLabel, position };
+  });
+  return { engines: list, running: list.some((e) => e.running), logs: engineLogs.slice(-50) };
 }
 
 // ── API 핸들러 ─────────────────────────────────────────────────
@@ -121,7 +130,9 @@ async function handleApi(req, res, pathname, body) {
     const raw = readRawConfig();
     if (!raw) throw new Error("설정이 없습니다. 먼저 키를 등록해주세요.");
     if (want === "real" && !raw.real?.appKey) return { needsKeys: true };
-    if (engine.running) throw new Error("자동매매가 실행 중입니다. 먼저 정지한 뒤 모드를 전환해주세요.");
+    if ([...engines.values()].some((e) => e.running)) {
+      throw new Error("자동매매가 실행 중입니다. 먼저 정지한 뒤 모드를 전환해주세요.");
+    }
     raw.mode = want;
     writeRawConfig(raw);
     return { ok: true, mode: want };
@@ -296,7 +307,11 @@ async function handleApi(req, res, pathname, body) {
   }
 
   if (pathname === "/api/engine/stop" && req.method === "POST") {
-    if (engine.stop) engine.stop();
+    if (body.code) {
+      engines.get(body.code)?.stop?.();
+    } else {
+      for (const e of engines.values()) e.stop?.();
+    }
     return { ok: true };
   }
 

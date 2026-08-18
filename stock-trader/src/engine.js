@@ -56,16 +56,30 @@ export function evaluateSignal(candles, currentPrice, { shortPeriod = 5, longPer
   return { signal, shortNow, longNow };
 }
 
+// 엔진 상태는 모의/실전을 반드시 분리한다 — 모의에서 산 포지션 기억이
+// 실전 엔진에 넘어가면 안 되기 때문
 function statePath(code) {
-  return path.join(loadConfig().root, "data", `engine-${code}.json`);
+  const config = loadConfig();
+  return path.join(config.root, "data", `engine-${code}-${config.mode}.json`);
 }
 
 function loadState(code) {
   try {
     return JSON.parse(fs.readFileSync(statePath(code), "utf8"));
-  } catch {
-    return { position: null, lastSignal: null };
-  }
+  } catch {}
+  // 구버전 파일(모드 구분 없음)은 모의투자 기록으로 간주해 이전하고,
+  // 실전 엔진은 항상 빈 상태에서 시작한다
+  try {
+    const config = loadConfig();
+    const legacy = path.join(config.root, "data", `engine-${code}.json`);
+    if (fs.existsSync(legacy)) {
+      const paperPath = path.join(config.root, "data", `engine-${code}-paper.json`);
+      if (!fs.existsSync(paperPath)) fs.renameSync(legacy, paperPath);
+      else fs.rmSync(legacy);
+      if (config.mode === "paper") return JSON.parse(fs.readFileSync(paperPath, "utf8"));
+    }
+  } catch {}
+  return { position: null, lastSignal: null };
 }
 
 function saveState(code, state) {

@@ -56,41 +56,48 @@ export function evaluateSignal(candles, currentPrice, { shortPeriod = 5, longPer
   return { signal, shortNow, longNow };
 }
 
-// 엔진 상태는 모의/실전을 반드시 분리한다 — 모의에서 산 포지션 기억이
-// 실전 엔진에 넘어가면 안 되기 때문
-function statePath(code) {
+// 엔진 상태는 모의/실전 그리고 연습/자동주문을 전부 분리한다.
+// 연습 모드의 "샀다 치고" 기억이 자동주문 모드에 넘어가도 안 되고,
+// 모의의 기억이 실전에 넘어가도 안 되기 때문.
+function statePath(code, live) {
   const config = loadConfig();
-  return path.join(config.root, "data", `engine-${code}-${config.mode}.json`);
+  return path.join(config.root, "data", `engine-${code}-${config.mode}-${live ? "live" : "practice"}.json`);
 }
 
-function loadState(code) {
+function loadState(code, live) {
   try {
-    return JSON.parse(fs.readFileSync(statePath(code), "utf8"));
+    return JSON.parse(fs.readFileSync(statePath(code, live), "utf8"));
   } catch {}
-  // 구버전 파일(모드 구분 없음)은 모의투자 기록으로 간주해 이전하고,
-  // 실전 엔진은 항상 빈 상태에서 시작한다
+  // 구버전 파일 이전: 연습/자동주문 구분이 없던 기록은 안전한 쪽(연습)으로 보관
   try {
     const config = loadConfig();
-    const legacy = path.join(config.root, "data", `engine-${code}.json`);
-    if (fs.existsSync(legacy)) {
-      const paperPath = path.join(config.root, "data", `engine-${code}-paper.json`);
-      if (!fs.existsSync(paperPath)) fs.renameSync(legacy, paperPath);
-      else fs.rmSync(legacy);
-      if (config.mode === "paper") return JSON.parse(fs.readFileSync(paperPath, "utf8"));
+    const dataDir = path.join(config.root, "data");
+    for (const [oldName, mode] of [
+      [`engine-${code}-${config.mode}.json`, config.mode],
+      [`engine-${code}.json`, "paper"],
+    ]) {
+      const oldPath = path.join(dataDir, oldName);
+      if (!fs.existsSync(oldPath)) continue;
+      const dest = path.join(dataDir, `engine-${code}-${mode}-practice.json`);
+      if (!fs.existsSync(dest)) fs.renameSync(oldPath, dest);
+      else fs.rmSync(oldPath);
     }
+    if (!live) return JSON.parse(fs.readFileSync(statePath(code, false), "utf8"));
   } catch {}
   return { position: null, lastSignal: null };
 }
 
-function saveState(code, state) {
-  fs.mkdirSync(path.dirname(statePath(code)), { recursive: true });
-  fs.writeFileSync(statePath(code), JSON.stringify(state, null, 2));
+function saveState(code, state, live) {
+  fs.mkdirSync(path.dirname(statePath(code, live)), { recursive: true });
+  fs.writeFileSync(statePath(code, live), JSON.stringify(state, null, 2));
 }
 
 function logLine(text) {
-  const file = path.join(loadConfig().root, "data", "auto-trade.log");
+  const config = loadConfig();
+  const file = path.join(config.root, "data", "auto-trade.log");
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.appendFileSync(file, `[${kst().dateStr} ${kst().timeStr}] ${text}\n`);
+  const tag = config.mode === "real" ? "실전" : "모의";
+  fs.appendFileSync(file, `[${kst().dateStr} ${kst().timeStr}][${tag}] ${text}\n`);
 }
 
 // live=true면 모의투자 주문까지 실행, false면 신호만.
@@ -130,7 +137,26 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
   await collectDaily(code, fourMonthsAgo);
 
   const { getPrice } = await import("./api/quotations.js");
-  const state = loadState(code);
+  const state = loadState(code, live);
+
+  // 자동주문 모드: 기록보다 실제 계좌가 진실 — 시작할 때 대조해서 안 맞으면 기록을 버린다
+  if (live && state.position) {
+    try {
+      const { getBalance } = await import("./api/balance.js");
+      const holding = (await getBalance()).holdings.find((h) => h.code === code);
+      if (!holding) {
+        log("이전 기록에는 보유 중이지만 계좌에는 이 종목이 없어 기록을 초기화합니다.");
+        state.position = null;
+        saveState(code, state, live);
+      } else if (state.position.qty > holding.qty) {
+        log(`기록(${won(state.position.qty)}주)보다 계좌 보유(${won(holding.qty)}주)가 적어 계좌 기준으로 맞춥니다.`);
+        state.position.qty = holding.qty;
+        saveState(code, state, live);
+      }
+    } catch (err) {
+      log(`계좌 대조 실패 (기존 기록대로 진행): ${err.message}`);
+    }
+  }
 
   log(
     `\n자동매매 시작 — ${code}, ${
@@ -160,7 +186,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       if (live && config.mode === "real") {
         if (state.dayStats?.date !== today) {
           state.dayStats = { date: today, orders: 0, pnl: 0 };
-          saveState(code, state);
+          saveState(code, state, live);
         }
         if (config.dailyLossLimit > 0 && state.dayStats.pnl <= -config.dailyLossLimit) {
           log(
@@ -212,7 +238,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
           log(`🔔 [연습] 매수 신호 (${note})! 지금이라면 ${won(p.price)}원에 매수했을 거예요.`);
           logLine(`[연습] 매수 신호 ${code} @ ${p.price}`);
         }
-        saveState(code, state);
+        saveState(code, state, live);
       } else if (signal === "sell" && state.position && !alreadyFired) {
         state.lastSignal = { date: today, type: "sell" };
         if (live) {
@@ -240,7 +266,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
           logLine(`[연습] 매도 신호 ${code} @ ${p.price}`);
         }
         state.position = null;
-        saveState(code, state);
+        saveState(code, state, live);
       }
     } catch (err) {
       log(`오류 (계속 재시도합니다): ${err.message}`);

@@ -139,7 +139,7 @@ function engineStatus() {
     let position = null;
     try {
       position = JSON.parse(
-        fs.readFileSync(path.join(projectRoot(), "data", `engine-${e.code}-${mode}.json`), "utf8")
+        fs.readFileSync(path.join(projectRoot(), "data", `engine-${e.code}-${mode}-${e.live ? "live" : "practice"}.json`), "utf8")
       ).position;
     } catch {}
     return { code: e.code, live: e.live, running: e.running, strategyLabel: e.strategyLabel, position };

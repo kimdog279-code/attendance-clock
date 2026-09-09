@@ -831,6 +831,26 @@ async function checkUpdate() {
     if (u.remote) $("#updateBar").style.display = "flex";
   } catch {}
 }
+
+// 버전 표시를 클릭하면 즉시 업데이트를 확인하고 결과를 알려준다
+$("#version").style.cursor = "pointer";
+$("#version").title = "클릭하면 지금 업데이트를 확인합니다";
+$("#version").addEventListener("click", async () => {
+  $("#version").textContent = "확인 중...";
+  try {
+    const u = await api("/api/update");
+    $("#version").textContent = "v" + u.current;
+    if (u.remote) {
+      $("#updateBar").style.display = "flex";
+    } else if (u.error) {
+      alert("업데이트 확인 실패: " + u.error + "\n인터넷 연결을 확인하고 잠시 후 다시 시도해주세요.");
+    } else {
+      alert(`최신 버전입니다 (v${u.current})`);
+    }
+  } catch (e) {
+    alert("업데이트 확인 실패: " + e.message);
+  }
+});
 $("#btnUpdate").addEventListener("click", async () => {
   $("#updateMsg").textContent = "내려받는 중...";
   try {

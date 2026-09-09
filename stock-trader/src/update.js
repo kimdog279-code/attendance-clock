@@ -28,20 +28,29 @@ function isNewer(remote, local) {
   return false;
 }
 
-// 새 버전이 있으면 버전 문자열, 없거나 확인 실패면 null (실패해도 프로그램은 정상 동작)
-export async function checkForUpdate() {
+// 상세 확인: 현재/최신 버전과 실패 사유까지 돌려준다.
+// ?t=시각 파라미터로 CDN 캐시를 우회해 항상 방금 올라간 버전을 본다.
+export async function updateInfo() {
+  const current = localVersion();
   try {
-    const res = await fetch(BASE + "package.json", { signal: AbortSignal.timeout(4000) });
-    if (!res.ok) return null;
-    const remoteVersion = (await res.json()).version;
-    return isNewer(remoteVersion, localVersion()) ? remoteVersion : null;
-  } catch {
-    return null;
+    const res = await fetch(`${BASE}package.json?t=${Date.now()}`, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return { current, error: `서버 응답 HTTP ${res.status}` };
+    const remote = (await res.json()).version;
+    return { current, remote, hasUpdate: isNewer(remote, current) };
+  } catch (err) {
+    return { current, error: err.message };
   }
 }
 
+// 새 버전이 있으면 버전 문자열, 없거나 확인 실패면 null (실패해도 프로그램은 정상 동작)
+export async function checkForUpdate() {
+  const info = await updateInfo();
+  return info.hasUpdate ? info.remote : null;
+}
+
 export async function applyUpdate() {
-  const res = await fetch(BASE + "files.json", { signal: AbortSignal.timeout(10000) });
+  const buster = `?t=${Date.now()}`; // CDN 캐시 우회 — 항상 최신 파일을 받는다
+  const res = await fetch(BASE + "files.json" + buster, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error("업데이트 파일 목록을 가져오지 못했습니다");
   const files = await res.json();
 
@@ -50,7 +59,7 @@ export async function applyUpdate() {
   for (const rel of files) {
     if (typeof rel !== "string" || rel.includes("..") || path.isAbsolute(rel)) continue;
 
-    const url = BASE + rel.split("/").map(encodeURIComponent).join("/");
+    const url = BASE + rel.split("/").map(encodeURIComponent).join("/") + buster;
     const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw new Error(`${rel} 다운로드 실패 (HTTP ${r.status})`);
     const content = Buffer.from(await r.arrayBuffer());

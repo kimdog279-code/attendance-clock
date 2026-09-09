@@ -421,8 +421,14 @@ async function handleApi(req, res, pathname, body) {
   }
 
   if (pathname === "/api/update") {
-    const { checkForUpdate } = await import("./update.js");
-    return { current: appVersion(), remote: await checkForUpdate() };
+    const { updateInfo } = await import("./update.js");
+    const info = await updateInfo();
+    return {
+      current: info.current,
+      remote: info.hasUpdate ? info.remote : null, // 배너 표시용 (새 버전일 때만)
+      latest: info.remote ?? null,
+      error: info.error ?? null,
+    };
   }
 
   if (pathname === "/api/update/apply" && req.method === "POST") {

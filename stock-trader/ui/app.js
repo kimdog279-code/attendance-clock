@@ -348,6 +348,53 @@ $("#btnBuy").addEventListener("click", () => placeOrder("buy"));
 $("#btnSell").addEventListener("click", () => placeOrder("sell"));
 $("#btnBalance").addEventListener("click", () => loadBalance().catch(() => {}));
 
+// ── 종목 스캐너 ────────────────────────────────────────────────
+$("#btnScan").addEventListener("click", async () => {
+  const el = $("#scanResult");
+  const btn = $("#btnScan");
+  btn.disabled = true;
+  el.innerHTML = "시장을 훑는 중... 종목마다 최근 시세를 내려받느라 10~20초쯤 걸립니다.";
+  try {
+    const r = await api("/api/scan", { method: "POST" });
+    const pct = (x) => ((x >= 0 ? "+" : "") + (x * 100).toFixed(1) + "%");
+    const col = (x) => (x >= 0 ? "var(--up)" : "var(--down)");
+    const eok = (v) => Math.round(v / 1e8).toLocaleString("ko-KR") + "억";
+    if (r.candidates.length === 0) {
+      el.innerHTML = '<span class="msg err">후보를 찾지 못했습니다. 잠시 후 다시 시도해주세요.</span>';
+    } else {
+      const rows = r.candidates
+        .map(
+          (c) => `<tr class="scan-row" data-code="${c.code}" data-name="${c.name}" style="cursor:pointer">
+            <td><b>${c.name}</b> <span class="hint">${c.code}</span></td>
+            <td class="num" style="color:${col(c.ret20)}">${pct(c.ret20)}</td>
+            <td class="num" style="color:${col(c.ret60)}">${pct(c.ret60)}</td>
+            <td>${c.aligned ? "📈 상승 추세" : "〰 혼조"}</td>
+            <td class="num">${eok(c.avgValue)}</td></tr>`
+        )
+        .join("");
+      el.innerHTML = `
+        <table>
+          <tr><th>종목 (클릭하면 선택)</th><th class="num">최근 20일</th><th class="num">최근 60일</th><th>추세</th><th class="num">하루 거래대금</th></tr>
+          ${rows}
+        </table>
+        <div class="hint" style="margin-top:8px">
+          ${r.source === "rank" ? "오늘 거래대금 상위 종목" : "주요 종목·관심종목"} ${r.scanned}개 분석 ·
+          정렬: 상승 추세 우선, 20일 수익률 순 · 과거 데이터 기반 관찰 후보일 뿐 매수 추천이 아닙니다.
+          후보 클릭 → [데이터 수집] → [분석 시작]으로 검증하세요.
+        </div>`;
+      el.querySelectorAll(".scan-row").forEach((row) =>
+        row.addEventListener("click", () => {
+          setCode(row.dataset.code, row.dataset.name);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        })
+      );
+    }
+  } catch (e) {
+    el.innerHTML = `<span class="msg err">${e.message}</span>`;
+  }
+  btn.disabled = false;
+});
+
 // ── 전략 추천 ──────────────────────────────────────────────────
 $("#btnRecommend").addEventListener("click", async () => {
   const el = $("#recResult");
@@ -356,44 +403,53 @@ $("#btnRecommend").addEventListener("click", async () => {
     const r = await api("/api/recommend?code=" + currentCode);
     const pct = (x) => (x * 100).toFixed(1) + "%";
     const rec = r.recommendation;
-    const holdWins = r.verdict === "hold";
+    const v = r.verdict; // "strategy" | "hold" | "avoid"
     const col = (x) => (x >= 0 ? "var(--up)" : "var(--down)");
     const trophy = (won) => (won ? "🏆 " : "");
+    const cashRow = `<tr>
+      <td>${trophy(v === "avoid")}현금 보유 (아무것도 안 하기)</td>
+      <td class="num">0.0%</td><td class="num">0.0%</td><td class="num">-</td></tr>`;
     const bhRow = `<tr>
-      <td>${trophy(holdWins)}단순 보유 (사서 안 팔기)</td>
+      <td>${trophy(v === "hold")}단순 보유 (사서 안 팔기)</td>
       <td class="num" style="color:${col(r.buyHoldValidate.totalReturn)}">${pct(r.buyHoldValidate.totalReturn)}</td>
       <td class="num">${pct(r.buyHoldValidate.maxDrawdown)}</td>
       <td class="num">-</td></tr>`;
     const rows = r.finalists
       .map(
         (f, i) => `<tr>
-          <td>${trophy(!holdWins && i === 0)}${f.label}${f.validate.tradeCount === 0 ? ' <span class="hint">(시험 기간에 신호 없음)</span>' : ""}</td>
+          <td>${trophy(v === "strategy" && i === 0)}${f.label}${f.validate.tradeCount === 0 ? ' <span class="hint">(시험 기간에 신호 없음)</span>' : ""}</td>
           <td class="num" style="color:${col(f.validate.totalReturn)}">${pct(f.validate.totalReturn)}</td>
           <td class="num">${pct(f.validate.maxDrawdown)}</td>
           <td class="num">${f.validate.tradeCount}회</td></tr>`
       )
       .join("");
-    const headline = holdWins
-      ? `<b>결론: 이 종목은 "사서 들고 있기"가 가장 나았습니다</b><br/>
+    const headlines = {
+      hold: `<b>결론: 이 종목은 "사서 들고 있기"가 가장 나았습니다</b><br/>
          시험 기간(최근 1년) 보유 수익률 <b style="color:${col(r.buyHoldValidate.totalReturn)}">${pct(r.buyHoldValidate.totalReturn)}</b>
-         — 어떤 타이밍 전략도 이걸 이기지 못했어요.
-         타이밍 매매를 원하면 표에서 전략을 고를 수 있지만, 이 종목에서는 근거가 약합니다.`
-      : `<b>추천: ${rec.label}</b><br/>
+         — 어떤 타이밍 전략도 이걸 이기지 못했어요.`,
+      strategy: `<b>추천: ${rec.label}</b><br/>
          시험 기간(최근 1년) 수익률 <b style="color:${col(rec.validate.totalReturn)}">${pct(rec.validate.totalReturn)}</b>
          (그냥 보유했다면 ${pct(r.buyHoldValidate.totalReturn)})
-         · 최대 하락폭 ${pct(rec.validate.maxDrawdown)} · 매매 ${rec.validate.tradeCount}회`;
+         · 최대 하락폭 ${pct(rec.validate.maxDrawdown)} · 매매 ${rec.validate.tradeCount}회`,
+      avoid: `<b>결론: 최근 1년 기준, 이 종목은 "사지 않는 것"이 가장 나았습니다</b><br/>
+         그냥 보유했다면 <b style="color:${col(r.buyHoldValidate.totalReturn)}">${pct(r.buyHoldValidate.totalReturn)}</b>이고,
+         타이밍 전략들도 위험(중간 하락폭) 대비 성과가 충분하지 않았어요.
+         무리해서 매매할 근거가 없는 종목입니다 — 다른 종목을 찾아보세요.`,
+    };
+    const showApply = rec.validate.tradeCount > 0 && rec.validate.totalReturn > 0;
     el.innerHTML = `
-      <div class="notice" style="margin-bottom:12px">${headline}</div>
+      <div class="notice" style="margin-bottom:12px">${headlines[v]}</div>
       <table>
         <tr><th>비교 (시험 기간 성적)</th><th class="num">시험 수익률</th><th class="num">최대 하락폭</th><th class="num">매매</th></tr>
+        ${cashRow}
         ${bhRow}
         ${rows}
       </table>
       <div class="row" style="margin-top:10px">
-        ${holdWins ? "" : '<button class="small" id="btnUseRec">이 전략을 자동매매에 적용</button>'}
-        <span class="hint">연습 ${r.period.train} → 시험 ${r.period.validate} · 총 ${r.candidatesTried}개 조합 비교 · 과거 성과일 뿐 미래 보장이 아닙니다</span>
+        ${showApply ? '<button class="small" id="btnUseRec">이 전략을 자동매매에 적용</button>' : ""}
+        <span class="hint">연습 ${r.period.train} → 시험 ${r.period.validate} · 총 ${r.candidatesTried}개 조합 비교 · 과거 성과일 뿐 미래 보장이 아닙니다${v === "avoid" ? " · 그래도 전략을 쓰려면 자동매매 카드에서 직접 선택 가능" : ""}</span>
       </div>`;
-    if (holdWins) return;
+    if (!showApply) return;
     $("#btnUseRec").addEventListener("click", () => {
       const sel = $("#engStrategySel");
       const want = JSON.stringify({ id: rec.id, params: rec.params });

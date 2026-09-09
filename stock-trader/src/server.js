@@ -376,6 +376,11 @@ async function handleApi(req, res, pathname, body) {
     return { ok: true };
   }
 
+  if (pathname === "/api/scan" && req.method === "POST") {
+    const { scanStocks } = await import("./scanner.js");
+    return await scanStocks();
+  }
+
   if (pathname === "/api/recommend") {
     const { loadDaily } = await import("./store.js");
     const { recommend } = await import("./strategies.js");

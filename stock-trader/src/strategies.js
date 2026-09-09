@@ -229,10 +229,15 @@ export function recommend(candles) {
 
   const bh = buyHold(candles.slice(-validateDays));
   const best = finalists[0];
-  // 시험 기간에서 단순 보유가 최고 전략을 이겼거나, 최고 전략이 매매를 아예 안 했다면
-  // 정직하게 "보유"를 최종 답으로 선언한다.
-  const verdict =
-    score(bh) > score(best.validate) || best.validate.tradeCount === 0 ? "hold" : "strategy";
+  // 3자 대결로 판정한다: 최고 전략 vs 단순 보유 vs 현금(아무것도 안 하기, 점수 0).
+  //  - strategy: 실제로 매매한 전략이 플러스 점수로 보유·현금을 모두 이김
+  //  - hold:     보유가 플러스 점수로 이김
+  //  - avoid:    현금이 최선 — 이 종목은 최근 1년 기준 손대지 않는 게 나았음
+  const bhScore = score(bh);
+  const bestScore = score(best.validate);
+  let verdict = "avoid";
+  if (bestScore > 0 && bestScore >= bhScore && best.validate.tradeCount > 0) verdict = "strategy";
+  else if (bhScore > 0 && bh.totalReturn > 0) verdict = "hold";
   return {
     verdict,
     period: {

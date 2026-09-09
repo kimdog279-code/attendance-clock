@@ -145,9 +145,10 @@ export const STRATEGIES = {
 
   vb: {
     name: "변동성 돌파",
-    label: (p) => `변동성 돌파 (k=${p.k}, 당일 청산)`,
+    label: (p) => `변동성 돌파 (k=${p.k}, 다음날 아침 청산)`,
     grid: [{ k: 0.5 }, { k: 0.3 }],
-    // 당일 시가 + k×전일변동폭 돌파 시 매수, 다음 날 시가 청산 — 전용 시뮬레이터
+    // 당일 시가 + k×전일변동폭 돌파 시 매수, 하룻밤 보유 후 다음 날 시가 청산.
+    // 포지션 수명이 하루라 낙폭은 작지만, 매매가 잦아 체결 불리(슬리피지)에 민감하다.
     backtest(candles, p) {
       let equity = CASH, peak = CASH, mdd = 0, wins = 0, trades = 0;
       for (let i = 1; i < candles.length - 1; i++) {
@@ -177,7 +178,7 @@ export const STRATEGIES = {
       const target = quote.open + p.k * (prev.high - prev.low);
       // 어제(또는 그 전) 산 포지션은 새 날 첫 확인 때 청산
       if (position && position.date && position.date < quote.today) {
-        return { signal: "sell", note: "당일 청산 규칙" };
+        return { signal: "sell", note: "다음날 아침 청산 규칙" };
       }
       if (!position && quote.price >= target) {
         return { signal: "buy", note: `돌파선 ${Math.round(target).toLocaleString("ko-KR")} 넘음` };

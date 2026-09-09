@@ -35,10 +35,15 @@ export async function getBalance() {
     }));
 
   const summary = data.output2?.[0] ?? {};
+  // 보유 주식 평가금액: 요약 필드를 우선 쓰고, 없으면 종목별 평가액 합산
+  const stockValue =
+    Number(summary.scts_evlu_amt ?? 0) ||
+    holdings.reduce((sum, h) => sum + h.qty * h.currentPrice, 0);
   return {
     holdings,
-    cash: Number(summary.dnca_tot_amt ?? 0), // 예수금
-    totalEval: Number(summary.tot_evlu_amt ?? 0), // 총 평가금액
+    stockValue, // 보유 주식 평가금액
+    cash: Number(summary.dnca_tot_amt ?? 0), // 남은 현금(예수금)
+    totalEval: Number(summary.tot_evlu_amt ?? 0), // 총 평가금액 (주식+현금)
     totalProfitLoss: Number(summary.evlu_pfls_smtl_amt ?? 0),
   };
 }

@@ -161,6 +161,24 @@ td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--grid); font-variant-
 tr:last-child td { border-bottom: none; }
 .num { text-align: right; }
 
+/* 계좌 요약 */
+.acct-summary { margin-top: 10px; font-size: 14px; }
+.acct-summary > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+.acct-summary > div > span:first-child { color: var(--ink-2); }
+.acct-summary b { font-variant-numeric: tabular-nums; }
+.acct-summary .total {
+  border-top: 1px solid var(--grid);
+  margin-top: 4px;
+  padding-top: 7px;
+}
+.acct-summary .total b { font-size: 16px; }
+
 /* 차트 */
 #chartWrap { position: relative; }
 #chart { width: 100%; display: block; }

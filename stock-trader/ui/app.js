@@ -143,9 +143,17 @@ async function loadBalance() {
         <td class="num" style="color:var(--${up ? "up" : "down"})">${up ? "+" : ""}${won(h.profitLoss)}원</td></tr>`;
     }
     html += "</table>";
+  } else {
+    html += `<div class="hint">보유 종목 없음</div>`;
   }
-  html += `<div class="subline" style="margin-top:8px">현금 ${won(b.cash)}원 · 총평가 ${won(b.totalEval)}원</div>`;
-  $("#balanceBox").innerHTML = html || "보유 종목 없음";
+  const plUp = b.totalProfitLoss >= 0;
+  html += `<div class="acct-summary">
+    <div><span>보유 주식 평가</span><span><b>${won(b.stockValue)}원</b>
+      ${b.holdings.length ? `<span style="color:var(--${plUp ? "up" : "down"});font-size:12.5px">(${plUp ? "+" : ""}${won(b.totalProfitLoss)}원)</span>` : ""}</span></div>
+    <div><span>남은 현금 (예수금)</span><b>${won(b.cash)}원</b></div>
+    <div class="total"><span>총평가액</span><b>${won(b.totalEval)}원</b></div>
+  </div>`;
+  $("#balanceBox").innerHTML = html;
 }
 
 // ── 차트 ───────────────────────────────────────────────────────

@@ -150,9 +150,12 @@ async function loadBalance() {
   html += `<div class="acct-summary">
     <div><span>보유 주식 평가</span><span><b>${won(b.stockValue)}원</b>
       ${b.holdings.length ? `<span style="color:var(--${plUp ? "up" : "down"});font-size:12.5px">(${plUp ? "+" : ""}${won(b.totalProfitLoss)}원)</span>` : ""}</span></div>
-    <div><span>남은 현금 (예수금)</span><b>${won(b.cash)}원</b></div>
+    <div><span>남은 현금 (정산 반영)</span><b>${won(b.cash)}원</b></div>
     <div class="total"><span>총평가액</span><b>${won(b.totalEval)}원</b></div>
-  </div>`;
+  </div>` +
+    (Math.abs(b.cashBeforeSettle - b.cash) > 1000
+      ? `<div class="hint" style="margin-top:6px">정산 전 예수금은 ${won(b.cashBeforeSettle)}원 — 주식 매매 대금은 2영업일 뒤에 실제 결제되어, 그동안 예수금 숫자가 다르게 보일 수 있어요.</div>`
+      : "");
   $("#balanceBox").innerHTML = html;
 }
 

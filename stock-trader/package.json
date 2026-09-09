@@ -1,6 +1,6 @@
 {
   "name": "stock-trader",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "description": "한국투자증권 KIS Developers API 기반 국내 주식 자동매매 프로그램",
   "type": "module",
   "main": "src/cli.js",

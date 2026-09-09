@@ -39,11 +39,19 @@ export async function getBalance() {
   const stockValue =
     Number(summary.scts_evlu_amt ?? 0) ||
     holdings.reduce((sum, h) => sum + h.qty * h.currentPrice, 0);
+  const totalEval = Number(summary.tot_evlu_amt ?? 0);
+  // 남은 현금은 "정산 반영 후(D+2 예수금)" 기준으로 — 주식 매매 대금은
+  // 2영업일 뒤 결제되므로 결제 전 예수금(dnca_tot_amt)은 실제와 다를 수 있다.
+  const cashBeforeSettle = Number(summary.dnca_tot_amt ?? 0);
+  const cash =
+    Number(summary.prvs_rcdl_excc_amt ?? 0) ||
+    (totalEval > 0 ? totalEval - stockValue : cashBeforeSettle);
   return {
     holdings,
     stockValue, // 보유 주식 평가금액
-    cash: Number(summary.dnca_tot_amt ?? 0), // 남은 현금(예수금)
-    totalEval: Number(summary.tot_evlu_amt ?? 0), // 총 평가금액 (주식+현금)
+    cash, // 남은 현금 (정산 반영)
+    cashBeforeSettle, // 정산 전 예수금 (참고용)
+    totalEval, // 총 평가금액 (주식+현금)
     totalProfitLoss: Number(summary.evlu_pfls_smtl_amt ?? 0),
   };
 }

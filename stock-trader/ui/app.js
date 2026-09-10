@@ -484,9 +484,13 @@ $("#btnRecommend").addEventListener("click", async () => {
 function renderBudget(s) {
   $("#engBudget").value = s.autoTradeBudget;
   const note = $("#budgetNote");
-  // 실전에서는 1건 상한과 비교해 더 작은 금액이 실제로 쓰인다
-  if (MODE === "real" && s.maxOrderAmount > 0 && s.maxOrderAmount < s.autoTradeBudget) {
-    note.textContent = `→ 실제 적용 ${won(s.maxOrderAmount)}원 (1건 상한이 더 작음)`;
+  // 실전에서는 안전장치의 1건 상한이 더 낮으면 그쪽이 이긴다 — 헷갈리지 않게 이유까지 밝힌다
+  const capped = MODE === "real" && s.maxOrderAmount > 0 && s.maxOrderAmount < s.autoTradeBudget;
+  if (capped) {
+    note.innerHTML =
+      `<span style="color:var(--up)">⚠ 실제로는 <b>${won(s.maxOrderAmount)}원</b>만 매수합니다</span> —
+       아래 [⚠ 실전 안전장치]의 '주문 1건당 최대 ${won(s.maxOrderAmount)}원'이 더 낮아서 그 금액으로 제한돼요.
+       예산대로 매수하려면 그 상한을 ${won(s.autoTradeBudget)}원 이상으로 올리세요.`;
   } else {
     note.textContent = "신호가 오면 이 금액만큼 매수합니다";
   }

@@ -54,6 +54,9 @@ async function init() {
 
   $("#dash").classList.remove("hidden");
 
+  // 자동매매 매수 예산 (모의·실전 공통)
+  renderBudget(st.settings);
+
   // 실전 모드 전용 UI
   $("#safetyCard").classList.toggle("hidden", MODE !== "real");
   if (MODE === "real") {
@@ -474,6 +477,32 @@ $("#btnRecommend").addEventListener("click", async () => {
     });
   } catch (e) {
     el.innerHTML = `<span class="msg err">${e.message}</span>`;
+  }
+});
+
+// ── 자동매매 매수 예산 ─────────────────────────────────────────
+function renderBudget(s) {
+  $("#engBudget").value = s.autoTradeBudget;
+  const note = $("#budgetNote");
+  // 실전에서는 1건 상한과 비교해 더 작은 금액이 실제로 쓰인다
+  if (MODE === "real" && s.maxOrderAmount > 0 && s.maxOrderAmount < s.autoTradeBudget) {
+    note.textContent = `→ 실제 적용 ${won(s.maxOrderAmount)}원 (1건 상한이 더 작음)`;
+  } else {
+    note.textContent = "신호가 오면 이 금액만큼 매수합니다";
+  }
+}
+
+$("#btnSaveBudget").addEventListener("click", async () => {
+  const note = $("#budgetNote");
+  try {
+    const r = await api("/api/settings", {
+      method: "POST",
+      body: { autoTradeBudget: Number($("#engBudget").value) },
+    });
+    renderBudget(r);
+    note.textContent = "저장됨 · " + note.textContent;
+  } catch (e) {
+    note.textContent = e.message;
   }
 });
 

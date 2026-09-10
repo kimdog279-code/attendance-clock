@@ -195,6 +195,13 @@
           <span class="hint">전략:</span>
           <select id="engStrategySel"></select>
         </div>
+        <div class="row" style="margin-bottom: 8px">
+          <span class="hint">매수 1회 예산:</span>
+          <input type="number" id="engBudget" style="width: 120px" step="100000" min="10000" />
+          <span class="hint">원</span>
+          <button class="small ghost" id="btnSaveBudget">저장</button>
+          <span class="hint" id="budgetNote"></span>
+        </div>
         <div class="row">
           <label><input type="radio" name="engMode" value="practice" checked /> 연습 (신호만 알림)</label>
           <label><input type="radio" name="engMode" value="live" /> 주문 실행 (모의투자)</label>

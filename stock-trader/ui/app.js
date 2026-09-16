@@ -335,21 +335,47 @@ $("#btnBacktest").addEventListener("click", async () => {
 });
 
 // ── 주문 ───────────────────────────────────────────────────────
+// 시장가/지정가 전환 — 지정가를 고르면 가격칸을 현재가로 채워 보여준다
+function orderTypeIsLimit() {
+  return document.querySelector('input[name="ordType"]:checked').value === "limit";
+}
+
+function syncOrderType() {
+  const limit = orderTypeIsLimit();
+  $("#inPrice").classList.toggle("hidden", !limit);
+  $("#priceUnit").classList.toggle("hidden", !limit);
+  if (limit && !$("#inPrice").value) {
+    $("#inPrice").value = Number(String($("#price").textContent).replaceAll(",", "")) || "";
+  }
+}
+document.querySelectorAll('input[name="ordType"]').forEach((r) =>
+  r.addEventListener("change", syncOrderType)
+);
+
 async function placeOrder(side) {
   const qty = Number($("#inQty").value);
   const label = side === "buy" ? "매수" : "매도";
+  const limit = orderTypeIsLimit();
+  const price = limit ? Number($("#inPrice").value) : null;
+  const msg = $("#orderMsg");
+  if (limit && (!Number.isFinite(price) || price <= 0)) {
+    msg.className = "msg err";
+    msg.textContent = "지정가 주문은 가격을 입력해야 합니다.";
+    return;
+  }
   const priceNow = $("#price").textContent;
   const stockLabel = $("#stockName").textContent || currentCode;
+  const how = limit ? `지정가 ${won(price)}원` : "시장가";
+  const est = limit ? `${won(price * qty)}원` : `약 ${priceNow}원 × ${qty}주`;
   const message =
     MODE === "real"
-      ? `⚠⚠ 실전 계좌 — 진짜 돈입니다 ⚠⚠\n\n${stockLabel}(${currentCode}) ${qty}주 시장가 ${label}\n현재가 기준 약 ${priceNow}원 × ${qty}주\n\n정말 주문할까요?`
-      : `${stockLabel}(${currentCode}) ${qty}주를 시장가로 ${label}할까요?\n(모의투자 · 현재가 기준 약 ${priceNow}원 × ${qty}주)`;
+      ? `⚠⚠ 실전 계좌 — 진짜 돈입니다 ⚠⚠\n\n${stockLabel}(${currentCode}) ${qty}주 ${how} ${label}\n${est}\n\n정말 주문할까요?`
+      : `${stockLabel}(${currentCode}) ${qty}주 ${how} ${label}할까요?\n(모의투자 · ${est})`;
   if (!confirm(message)) return;
-  const msg = $("#orderMsg");
   msg.className = "msg";
   msg.textContent = "주문 넣는 중...";
   try {
-    const r = await api("/api/order", { method: "POST", body: { side, code: currentCode, qty } });
+    const r = await api("/api/order", { method: "POST", body: { side, code: currentCode, qty, price } });
     msg.className = "msg ok";
     msg.textContent = `✅ 주문 접수! (주문번호 ${r.orderNo}) — 장 시간이 아니면 다음 개장 때 처리됩니다`;
     setTimeout(() => loadBalance().catch(() => {}), 2500);

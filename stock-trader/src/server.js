@@ -367,8 +367,25 @@ async function handleApi(req, res, pathname, body) {
     const { buy, sell } = await import("./api/orders.js");
     const qty = Number(body.qty);
     if (!Number.isInteger(qty) || qty < 1) throw new Error("수량은 1 이상의 정수로 입력해주세요.");
+    // price가 있으면 지정가, 없으면 시장가
+    let price;
+    if (body.price != null && body.price !== "") {
+      price = Number(body.price);
+      if (!Number.isFinite(price) || price <= 0) throw new Error("지정가는 0보다 큰 숫자여야 합니다.");
+      price = Math.round(price);
+    }
     const fn = body.side === "sell" ? sell : buy;
-    return await fn(code, qty);
+    try {
+      return await fn(code, qty, price);
+    } catch (err) {
+      // 정규장 밖에서는 시장가가 거부된다 — 원인과 해결법을 덧붙인다
+      if (price == null && /애프터|시간외|지정가/.test(err.message)) {
+        throw new Error(
+          err.message + " → 지금은 정규장(9:00~15:30) 시간이 아닙니다. [지정가]를 선택하고 가격을 입력해 주문하세요."
+        );
+      }
+      throw err;
+    }
   }
 
   if (pathname === "/api/engine/start" && req.method === "POST") {

@@ -79,7 +79,13 @@
       </div>
 
       <div class="card third">
-        <h2>주문 (시장가)</h2>
+        <h2>주문</h2>
+        <div class="row" style="margin-bottom: 8px">
+          <label><input type="radio" name="ordType" value="market" checked /> 시장가</label>
+          <label><input type="radio" name="ordType" value="limit" /> 지정가</label>
+          <input type="number" id="inPrice" class="hidden" min="1" step="10" style="width: 110px" />
+          <span class="hint hidden" id="priceUnit">원</span>
+        </div>
         <div class="row">
           <input type="number" id="inQty" value="1" min="1" style="width: 90px" />
           <span class="hint">주</span>
@@ -87,6 +93,9 @@
           <button class="sell" id="btnSell">매도</button>
         </div>
         <div class="msg" id="orderMsg"></div>
+        <div class="hint" id="ordTypeNote" style="margin-top: 4px">
+          정규장(9:00~15:30) 외 시간에는 지정가만 주문할 수 있습니다.
+        </div>
       </div>
 
       <div class="card">

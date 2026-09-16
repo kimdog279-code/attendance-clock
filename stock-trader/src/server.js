@@ -379,6 +379,11 @@ async function handleApi(req, res, pathname, body) {
       return await fn(code, qty, price);
     } catch (err) {
       // 정규장 밖에서는 시장가가 거부된다 — 원인과 해결법을 덧붙인다
+      if (/장 운영일자|영업일/.test(err.message)) {
+        throw new Error(
+          err.message + " → 지금은 거래 가능한 시간이 아닙니다 (정규장 9:00~15:30, 시간외 ~18:00). 다음 영업일에 주문해주세요."
+        );
+      }
       if (price == null && /애프터|시간외|지정가/.test(err.message)) {
         throw new Error(
           err.message + " → 지금은 정규장(9:00~15:30) 시간이 아닙니다. [지정가]를 선택하고 가격을 입력해 주문하세요."

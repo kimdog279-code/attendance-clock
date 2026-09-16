@@ -8,6 +8,7 @@ let chartData = [];
 let engineTimer = null;
 let MODE = "paper";
 let setupTarget = "paper";
+let lastPrice = 0;
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -132,6 +133,8 @@ async function loadPrice() {
   $("#delta").className = "delta " + (up ? "up" : "down");
   $("#delta").textContent = `${up ? "▲" : "▼"} ${won(Math.abs(p.change))} (${up ? "+" : ""}${p.changeRate}%)`;
   $("#priceSub").textContent = `시가 ${won(p.open)} · 고가 ${won(p.high)} · 저가 ${won(p.low)} · 거래량 ${won(p.volume)}`;
+  lastPrice = p.price;
+  if (orderTypeIsLimit() && !$("#inPrice").value) $("#inPrice").value = p.price;
 }
 
 // ── 계좌 ───────────────────────────────────────────────────────
@@ -365,6 +368,14 @@ async function placeOrder(side) {
   }
   const priceNow = $("#price").textContent;
   const stockLabel = $("#stockName").textContent || currentCode;
+  // 현재가와 30% 이상 벌어진 지정가는 오타일 가능성이 높다 — 한 번 더 묻는다
+  if (limit && lastPrice > 0 && Math.abs(price - lastPrice) / lastPrice > 0.3) {
+    const diff = price > lastPrice ? "높습니다" : "낮습니다";
+    if (!confirm(
+      `⚠ 입력하신 지정가 ${won(price)}원이 현재가 ${won(lastPrice)}원보다 크게 ${diff}.\n\n` +
+      `오타가 아닌지 확인해주세요. 이대로 진행할까요?`
+    )) return;
+  }
   const how = limit ? `지정가 ${won(price)}원` : "시장가";
   const est = limit ? `${won(price * qty)}원` : `약 ${priceNow}원 × ${qty}주`;
   const message =
@@ -678,6 +689,8 @@ $("#btnFav").addEventListener("click", async () => {
 function setCode(code, name) {
   currentCode = code;
   $("#inCode").value = code;
+  // 종목이 바뀌면 지정가는 이전 종목 가격이므로 반드시 비운다
+  $("#inPrice").value = "";
   $("#stockName").textContent = name ?? "";
   renderChips();
   showStockName(code).then((resolved) => recordRecent(code, resolved || name || ""));

@@ -399,6 +399,71 @@ $("#btnBuy").addEventListener("click", () => placeOrder("buy"));
 $("#btnSell").addEventListener("click", () => placeOrder("sell"));
 $("#btnBalance").addEventListener("click", () => loadBalance().catch(() => {}));
 
+// ── 매매 성과 분석 ─────────────────────────────────────────────
+$("#btnTrades").addEventListener("click", async () => {
+  const el = $("#tradesResult");
+  el.innerHTML = "기록을 읽는 중...";
+  try {
+    const r = await api("/api/trades?mode=" + (MODE === "real" ? "실전" : "모의"));
+    if (!r.summary) {
+      el.innerHTML = '<span class="hint">아직 체결된 매매 기록이 없습니다. (연습 모드 신호는 집계에 포함되지 않습니다)</span>';
+      return;
+    }
+    const s = r.summary;
+    const pct = (x) => (x * 100).toFixed(2) + "%";
+    const col = (x) => (x >= 0 ? "var(--up)" : "var(--down)");
+    const sign = (x) => (x >= 0 ? "+" : "") + won(x);
+
+    const rows = r.byStock
+      .map(
+        (b) => `<tr>
+          <td>${engineName(b.code)} <span class="hint">${b.code}</span></td>
+          <td class="num">${b.count}회</td>
+          <td class="num" style="color:${col(b.grossPnl)}">${sign(b.grossPnl)}원</td>
+          <td class="num" style="color:var(--down)">-${won(b.cost)}원</td>
+          <td class="num" style="color:${col(b.netPnl)}"><b>${sign(b.netPnl)}원</b></td></tr>`
+      )
+      .join("");
+
+    // 핵심 진단: 수수료 전 손익이 플러스인데 최종이 마이너스면 = 비용이 원인
+    let verdict;
+    if (s.grossPnl > 0 && s.netPnl <= 0) {
+      verdict = `<b style="color:var(--up)">진단: 매매 판단은 나쁘지 않았지만 <u>수수료·세금이 수익을 전부 먹었습니다</u></b><br/>
+        수수료 전으로는 ${sign(s.grossPnl)}원을 벌었는데, 비용 ${won(s.cost)}원을 내고 나니 최종 ${sign(s.netPnl)}원이 됐어요.
+        매매 횟수를 줄이거나 한 번에 더 크게 먹는 전략이 필요합니다.`;
+    } else if (s.grossPnl <= 0) {
+      verdict = `<b style="color:var(--down)">진단: 매매 판단 자체가 손실이었습니다</b><br/>
+        수수료를 빼기 전부터 ${sign(s.grossPnl)}원이고, 비용 ${won(s.cost)}원이 더해져 최종 ${sign(s.netPnl)}원입니다.
+        전략이 이 종목·이 시장 상황과 맞지 않았다는 뜻이에요.`;
+    } else {
+      verdict = `<b style="color:var(--up)">진단: 비용을 내고도 수익이 남았습니다</b> — 최종 ${sign(s.netPnl)}원`;
+    }
+
+    el.innerHTML = `
+      <div class="notice" style="margin-bottom:12px">${verdict}</div>
+      <div class="stats" style="margin-bottom:12px">
+        <div class="stat"><div class="k">매매 횟수 · 승률</div><div class="v">${s.count}회 · ${pct(s.winRate)}</div></div>
+        <div class="stat"><div class="k">수수료·세금 전 손익</div><div class="v" style="color:${col(s.grossPnl)}">${sign(s.grossPnl)}원</div></div>
+        <div class="stat"><div class="k">낸 수수료·세금</div><div class="v" style="color:var(--down)">-${won(s.cost)}원</div></div>
+        <div class="stat"><div class="k">최종 실현 손익</div><div class="v" style="color:${col(s.netPnl)}">${sign(s.netPnl)}원</div></div>
+        <div class="stat"><div class="k">매매당 평균 등락</div><div class="v" style="color:${col(s.avgGrossRate)}">${pct(s.avgGrossRate)}</div></div>
+        <div class="stat"><div class="k">매매당 평균 비용</div><div class="v">${pct(s.costRate)}</div></div>
+      </div>
+      <table>
+        <tr><th>종목</th><th class="num">매매</th><th class="num">비용 전</th><th class="num">수수료·세금</th><th class="num">최종</th></tr>
+        ${rows}
+      </table>
+      <div class="hint" style="margin-top:8px">
+        기간 ${s.period} · 평균 보유 ${s.avgHeldDays.toFixed(1)}일 ·
+        이긴 매매 평균 ${sign(s.avgWin)}원 / 진 매매 평균 ${sign(s.avgLoss)}원
+        ${r.stillOpen.length ? ` · 아직 안 판 매수 ${r.stillOpen.length}건은 제외` : ""}
+        <br/>※ 수수료 0.015%(양방향)·거래세 0.15% 기준 근사치입니다.
+      </div>`;
+  } catch (e) {
+    el.innerHTML = `<span class="msg err">${e.message}</span>`;
+  }
+});
+
 // ── 종목 스캐너 ────────────────────────────────────────────────
 $("#btnScan").addEventListener("click", async () => {
   const el = $("#scanResult");

@@ -398,6 +398,11 @@ async function handleApi(req, res, pathname, body) {
     return { ok: true };
   }
 
+  if (pathname === "/api/trades") {
+    const { analyzeTrades } = await import("./analyze.js");
+    return analyzeTrades({ mode: q.get("mode") ?? undefined });
+  }
+
   if (pathname === "/api/scan" && req.method === "POST") {
     const { scanStocks } = await import("./scanner.js");
     return await scanStocks();

@@ -9,7 +9,8 @@ const TAX = 0.0015; // 증권거래세 0.15% (매도 시) — 근사치
 
 // [20260818 10:42][실전] 매수 주문 007660 2주 @ 103000
 // [20260817 10:42] 매도 주문 007660 2주 @ 105000   (구버전: 모드 표기 없음)
-const LINE = /^\[(\d{8})\s+(\d{2}:\d{2})\](?:\[(실전|모의)\])?\s+(매수|매도) 주문\s+(\d{6})\s+([\d,]+)주 @ ([\d,]+)/;
+// 손절 주문도 매도로 집계한다 (뒤에 붙는 [매수가 · 등락 · 전략] 메모는 무시)
+const LINE = /^\[(\d{8})\s+(\d{2}:\d{2})\](?:\[(실전|모의)\])?\s+(매수|매도|손절) 주문\s+(\d{6})\s+([\d,]+)주 @ ([\d,]+)/;
 
 export function parseLog() {
   const file = path.join(projectRoot(), "data", "auto-trade.log");
@@ -28,6 +29,7 @@ export function parseLog() {
       date, time,
       mode: mode ?? "미상",
       side: side === "매수" ? "buy" : "sell",
+      stopLoss: side === "손절",
       code,
       qty: Number(qtyStr.replaceAll(",", "")),
       price: Number(priceStr.replaceAll(",", "")),

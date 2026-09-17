@@ -97,6 +97,8 @@ export function loadConfig() {
     maxOrderAmount: Number(raw.maxOrderAmount ?? 100000),
     // 자동매매가 매수 1회에 쓸 예산(원)
     autoTradeBudget: Number(raw.autoTradeBudget ?? 1000000),
+    // 손절선(%): 매수가 대비 이만큼 떨어지면 전략과 무관하게 즉시 매도. 0이면 사용 안 함
+    stopLossPercent: Number(raw.stopLossPercent ?? 4),
     // 실전 자동매매: 하루 실현 손실이 이 금액을 넘으면 그날 자동매매 정지
     dailyLossLimit: Number(raw.dailyLossLimit ?? 100000),
     // 실전 자동매매: 하루 최대 주문 횟수 (신규 매수 제한, 매도는 항상 허용)

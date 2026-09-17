@@ -125,10 +125,47 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       ? Math.min(config.autoTradeBudget, config.maxOrderAmount)
       : config.autoTradeBudget;
 
+  const stopLossPct = Math.max(0, Number(config.stopLossPercent ?? 0));
+
   let stopped = false;
   stopPromise.then(() => {
     stopped = true;
   });
+
+  // 매도 실행 (전략 신호·손절 공용). reason은 로그에 남는 사유, isStop은 손절 여부.
+  // 호출부에서 state.position이 있는 것을 보장한다.
+  let currentPrice = 0;
+  const doSell = async (reason, isStop) => {
+    const entry = state.position.entryPrice;
+    const pct = (((currentPrice - entry) / entry) * 100).toFixed(2);
+    const tag = isStop ? "🛑 손절" : "🔴 매도";
+    if (live) {
+      const { getBalance } = await import("./api/balance.js");
+      const { sell } = await import("./api/orders.js");
+      const holding = (await getBalance()).holdings.find((h) => h.code === code);
+      if (!holding) {
+        log(`${tag} 신호! 하지만 계좌에 이 종목이 없어 건너뜁니다.`);
+        state.position = null;
+        return;
+      }
+      const r = await sell(code, holding.qty);
+      if (config.mode === "real") {
+        state.dayStats.orders++;
+        // 실현 손익 추정치를 하루 한도 계산에 반영 (수수료·거래세 근사 포함)
+        const qty = Math.min(holding.qty, state.position.qty || holding.qty);
+        state.dayStats.pnl += (currentPrice * (1 - 0.00165) - entry * (1 + 0.00015)) * qty;
+      }
+      log(`${tag} 주문 실행! ${holding.qty}주 @ ${won(currentPrice)}원 (${pct}%, ${reason}) — 주문번호 ${r.orderNo}`);
+      logLine(
+        `${isStop ? "손절" : "매도"} 주문 ${code} ${holding.qty}주 @ ${currentPrice} ` +
+          `[매수 ${entry} · ${pct}% · ${strat.name} · ${reason}]`
+      );
+    } else {
+      log(`🔔 [연습] ${isStop ? "손절" : "매도"} (${reason})! ${won(entry)}원에 샀다면 지금 ${won(currentPrice)}원 (${pct}%)에 팔았을 거예요.`);
+      logLine(`[연습] ${isStop ? "손절" : "매도"} 신호 ${code} @ ${currentPrice} [${pct}% · ${strat.name}]`);
+    }
+    state.position = null;
+  };
 
   // 최근 일봉 최신화 (약 넉 달치면 20일 이동평균 계산에 충분)
   log("최근 일봉 데이터를 최신화하는 중...");
@@ -169,6 +206,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       `안전장치: 하루 손실 한도 ${won(config.dailyLossLimit)}원 · 하루 최대 ${config.maxDailyOrders}회 주문 · 매수 1회 ${won(buyBudget)}원`
     );
   }
+  log(`손절선: ${stopLossPct > 0 ? `매수가 대비 -${stopLossPct}% (전략과 무관하게 즉시 매도)` : "사용 안 함"}`);
   log(`보유 상태: ${state.position ? `${won(state.position.qty)}주 보유 중` : "없음"}`);
   logLine(`엔진 시작 ${code} (${live ? "주문 실행" : "연습"})`);
 
@@ -200,6 +238,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
 
       const history = loadDaily(code).filter((c) => c.date < today);
       const p = await getPrice(code);
+      currentPrice = p.price;
       const quote = { price: p.price, open: p.open, today };
       const { signal, note } = strat.signalNow(history, quote, state.position, stratParams);
 
@@ -215,9 +254,24 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
         : "미보유";
       log(`[${kst().timeStr}] 현재가 ${won(p.price)} | ${note} | ${posLabel}`);
 
+      // ── 손절 검사: 전략 신호보다 먼저, 무조건 우선 ──────────────
+      // 손실이 커지기 전에 끊는다. 손절한 날은 같은 종목을 다시 사지 않는다.
+      if (state.position && stopLossPct > 0) {
+        const entry = state.position.entryPrice;
+        const dropPct = ((p.price - entry) / entry) * 100;
+        if (dropPct <= -stopLossPct) {
+          await doSell(`손절 ${dropPct.toFixed(2)}%`, true);
+          state.stoppedOut = { date: today };
+          saveState(code, state, live);
+          await Promise.race([sleep(pollMs), stopPromise]);
+          continue;
+        }
+      }
+
+      const stoppedOutToday = state.stoppedOut?.date === today;
       const alreadyFired = state.lastSignal?.date === today && state.lastSignal?.type === signal;
 
-      if (signal === "buy" && !state.position && !alreadyFired) {
+      if (signal === "buy" && !state.position && !alreadyFired && !stoppedOutToday) {
         state.lastSignal = { date: today, type: "buy" };
         if (live) {
           const { buy } = await import("./api/orders.js");
@@ -231,41 +285,17 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
             state.position = { qty, entryPrice: p.price, date: today };
             if (config.mode === "real") state.dayStats.orders++;
             log(`🟢 매수 주문 실행! ${qty}주 (주문번호 ${r.orderNo})`);
-            logLine(`매수 주문 ${code} ${qty}주 @ ${p.price}`);
+            logLine(`매수 주문 ${code} ${qty}주 @ ${p.price} [${strat.name}]`);
           }
         } else {
           state.position = { qty: 0, entryPrice: p.price, date: today };
           log(`🔔 [연습] 매수 신호 (${note})! 지금이라면 ${won(p.price)}원에 매수했을 거예요.`);
-          logLine(`[연습] 매수 신호 ${code} @ ${p.price}`);
+          logLine(`[연습] 매수 신호 ${code} @ ${p.price} [${strat.name}]`);
         }
         saveState(code, state, live);
       } else if (signal === "sell" && state.position && !alreadyFired) {
         state.lastSignal = { date: today, type: "sell" };
-        if (live) {
-          const { getBalance } = await import("./api/balance.js");
-          const { sell } = await import("./api/orders.js");
-          const holding = (await getBalance()).holdings.find((h) => h.code === code);
-          if (!holding) {
-            log("🔔 매도 신호! 하지만 계좌에 이 종목이 없어 건너뜁니다.");
-          } else {
-            const r = await sell(code, holding.qty);
-            if (config.mode === "real") {
-              state.dayStats.orders++;
-              // 실현 손익 추정치를 하루 한도 계산에 반영 (수수료·거래세 근사 포함)
-              const qty = Math.min(holding.qty, state.position?.qty || holding.qty);
-              const entry = state.position?.entryPrice ?? holding.avgPrice;
-              state.dayStats.pnl += (p.price * (1 - 0.00165) - entry * (1 + 0.00015)) * qty;
-            }
-            log(`🔴 매도 주문 실행! ${holding.qty}주 (주문번호 ${r.orderNo})`);
-            logLine(`매도 주문 ${code} ${holding.qty}주 @ ${p.price}`);
-          }
-        } else {
-          const entry = state.position.entryPrice;
-          const pct = (((p.price - entry) / entry) * 100).toFixed(2);
-          log(`🔔 [연습] 매도 신호 (${note})! ${won(entry)}원에 샀다면 지금 ${won(p.price)}원 (${pct}%)에 팔았을 거예요.`);
-          logLine(`[연습] 매도 신호 ${code} @ ${p.price}`);
-        }
-        state.position = null;
+        await doSell(note, false);
         saveState(code, state, live);
       }
     } catch (err) {

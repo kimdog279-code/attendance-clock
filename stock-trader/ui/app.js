@@ -65,8 +65,9 @@ async function init() {
 
   $("#dash").classList.remove("hidden");
 
-  // 자동매매 매수 예산 (모의·실전 공통)
+  // 자동매매 매수 예산·손절선 (모의·실전 공통)
   renderBudget(st.settings);
+  renderStopLoss(st.settings);
 
   // 실전 모드 전용 UI
   $("#safetyCard").classList.toggle("hidden", MODE !== "real");
@@ -593,6 +594,27 @@ $("#btnRecommend").addEventListener("click", async () => {
 });
 
 // ── 자동매매 매수 예산 ─────────────────────────────────────────
+function renderStopLoss(s) {
+  $("#engStopLoss").value = s.stopLossPercent;
+  $("#stopLossNote").textContent =
+    s.stopLossPercent > 0
+      ? "전략 신호와 무관하게 먼저 실행됩니다 (손절한 날은 재매수 안 함)"
+      : "⚠ 0 = 손절 없음 — 손실이 무한정 커질 수 있습니다";
+}
+
+$("#btnSaveStopLoss").addEventListener("click", async () => {
+  try {
+    const r = await api("/api/settings", {
+      method: "POST",
+      body: { stopLossPercent: Number($("#engStopLoss").value) },
+    });
+    renderStopLoss(r);
+    $("#stopLossNote").textContent = "저장됨 · " + $("#stopLossNote").textContent;
+  } catch (e) {
+    $("#stopLossNote").textContent = e.message;
+  }
+});
+
 function renderBudget(s) {
   $("#engBudget").value = s.autoTradeBudget;
   const note = $("#budgetNote");

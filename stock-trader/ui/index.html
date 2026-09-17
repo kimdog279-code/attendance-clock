@@ -223,6 +223,13 @@
           <button class="small ghost" id="btnSaveBudget">저장</button>
           <span class="hint" id="budgetNote"></span>
         </div>
+        <div class="row" style="margin-bottom: 8px">
+          <span class="hint">손절선: 매수가보다</span>
+          <input type="number" id="engStopLoss" style="width: 70px" step="0.5" min="0" max="50" />
+          <span class="hint">% 떨어지면 즉시 매도</span>
+          <button class="small ghost" id="btnSaveStopLoss">저장</button>
+          <span class="hint" id="stopLossNote"></span>
+        </div>
         <div class="row">
           <label><input type="radio" name="engMode" value="practice" checked /> 연습 (신호만 알림)</label>
           <label><input type="radio" name="engMode" value="live" /> 주문 실행 (모의투자)</label>

@@ -129,6 +129,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
 
   let lastErrorMessage = null;
   let sameErrorCount = 0;
+  let lastBlockNotice = null;
 
   let stopped = false;
   stopPromise.then(() => {
@@ -272,11 +273,29 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
         }
       }
 
+      // 손절한 날은 하루 종일 재매수 금지. 현금 부족은 30분 뒤 다시 시도.
       const stoppedOutToday = state.stoppedOut?.date === today;
+      const cashBlocked = state.cashShortUntil != null && Date.now() < state.cashShortUntil;
       const alreadyFired = state.lastSignal?.date === today && state.lastSignal?.type === signal;
 
-      if (signal === "buy" && !state.position && !alreadyFired && !stoppedOutToday) {
-        state.lastSignal = { date: today, type: "buy" };
+      // 신호가 왔는데 실행하지 않을 때는 이유를 반드시 알린다 (같은 사유는 한 번만)
+      if (signal === "buy" && !state.position) {
+        let block = null;
+        if (alreadyFired) block = "오늘 이미 매수가 한 번 실행됐습니다 (하루 1회 제한)";
+        else if (stoppedOutToday) block = "오늘 손절한 종목이라 재매수하지 않습니다";
+        else if (cashBlocked) {
+          const mins = Math.ceil((state.cashShortUntil - Date.now()) / 60000);
+          block = `현금이 부족해 대기 중입니다 (약 ${mins}분 뒤 다시 확인)`;
+        }
+        if (block && lastBlockNotice !== block) {
+          lastBlockNotice = block;
+          log(`⏸ 매수 신호가 왔지만 건너뜁니다 — ${block}`);
+        }
+      }
+
+      // 주문이 실패하면 lastSignal을 남기지 않는다 — 안 샀는데 '오늘 샀음'으로
+      // 기록되면 그날 내내 매수 기회를 놓치기 때문
+      if (signal === "buy" && !state.position && !alreadyFired && !stoppedOutToday && !cashBlocked) {
         if (live) {
           const { buy } = await import("./api/orders.js");
           const { getBalance, getBuyableCash } = await import("./api/balance.js");
@@ -302,13 +321,15 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
             log(
               `🔔 매수 신호! 하지만 살 수 있는 돈이 부족해 건너뜁니다 ` +
                 `(예산 ${won(buyBudget)}원 · 가용 현금 ${cash === Infinity ? "확인 불가" : won(Math.floor(cash)) + "원"} · 주가 ${won(p.price)}원). ` +
-                `오늘은 이 종목 매수를 더 시도하지 않습니다.`
+                `30분 뒤에 다시 확인합니다.`
             );
-            state.stoppedOut = { date: today, reason: "cash" }; // 같은 날 반복 시도 방지
+            state.cashShortUntil = Date.now() + 30 * 60 * 1000; // 30분 뒤 재확인
             saveState(code, state, live);
           } else {
             const r = await buy(code, qty);
             state.position = { qty, entryPrice: p.price, date: today };
+            state.lastSignal = { date: today, type: "buy" };
+            state.cashShortUntil = null;
             if (config.mode === "real") state.dayStats.orders++;
             const short = spendable < buyBudget - p.price;
             log(
@@ -319,6 +340,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
           }
         } else {
           state.position = { qty: 0, entryPrice: p.price, date: today };
+          state.lastSignal = { date: today, type: "buy" };
           log(`🔔 [연습] 매수 신호 (${note})! 지금이라면 ${won(p.price)}원에 매수했을 거예요.`);
           logLine(`[연습] 매수 신호 ${code} @ ${p.price} [${strat.name}]`);
         }

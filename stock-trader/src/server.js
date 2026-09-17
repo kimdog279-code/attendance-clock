@@ -94,6 +94,10 @@ function appVersion() {
   }
 }
 
+// 켤 때의 버전. 이후 파일이 업데이트되면 디스크 버전과 달라지는데,
+// 실행 중인 엔진은 옛 코드 그대로라 재시작해야 새 기능이 동작한다.
+const BOOT_VERSION = appVersion();
+
 // ── 자동매매 엔진 관리 (동시 여러 종목) ─────────────────────────
 const MAX_ENGINES = 5;
 const engines = new Map(); // code → { code, live, strategyLabel, running, stop }
@@ -154,8 +158,11 @@ async function handleApi(req, res, pathname, body) {
 
   if (pathname === "/api/status") {
     const raw = readRawConfig();
+    const diskVersion = appVersion();
     const out = {
-      version: appVersion(),
+      version: diskVersion,
+      bootVersion: BOOT_VERSION,
+      needsRestart: diskVersion !== BOOT_VERSION,
       configured: false,
       mode: raw?.mode === "real" ? "real" : "paper",
       profiles: { paper: !!raw?.paper?.appKey || !!raw?.appKey, real: !!raw?.real?.appKey },

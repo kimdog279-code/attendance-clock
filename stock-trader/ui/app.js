@@ -48,6 +48,16 @@ async function init() {
   MODE = st.mode;
   renderModeSwitch();
 
+  // 업데이트만 받고 재시작을 안 하면 '새 화면 + 옛 엔진' 상태가 된다 — 명확히 알린다
+  if (st.needsRestart) {
+    const bar = $("#updateBar");
+    bar.style.display = "flex";
+    bar.innerHTML =
+      `<span>🔄 <b>업데이트(v${st.version})가 아직 적용되지 않았습니다</b> — ` +
+      `검은 창을 닫고 <b>시작하기</b>를 다시 실행해주세요. ` +
+      `(현재 실행 중: v${st.bootVersion})</span>`;
+  }
+
   if (!st.configured) {
     showSetupForm(st.mode, st.mode === "real" && st.profiles.paper);
     return;
@@ -1003,7 +1013,7 @@ $("#btnUpdate").addEventListener("click", async () => {
   $("#updateMsg").textContent = "내려받는 중...";
   try {
     const r = await api("/api/update/apply", { method: "POST" });
-    $("#updateMsg").textContent = `완료 (${r.updated}개 파일)! 검은 창을 닫고 시작하기.bat을 다시 더블클릭해주세요.`;
+    $("#updateMsg").innerHTML = `완료 (${r.updated}개 파일)! <b>검은 창을 닫고 시작하기.bat을 다시 더블클릭해야 적용됩니다.</b>`;
   } catch (e) {
     $("#updateMsg").textContent = "실패: " + e.message;
   }

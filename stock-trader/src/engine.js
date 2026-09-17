@@ -211,6 +211,24 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
     );
   }
   log(`손절선: ${stopLossPct > 0 ? `매수가 대비 -${stopLossPct}% (전략과 무관하게 즉시 매도)` : "사용 안 함"}`);
+  // 예산이 계좌 현금보다 크면 매수 때마다 예산이 잘려서 헷갈린다 — 시작할 때 미리 알려준다
+  if (live) {
+    try {
+      const { getBuyableCash, getBalance } = await import("./api/balance.js");
+      const b = await getBuyableCash(code, null);
+      const cashNow = b ? b.amount : (await getBalance()).cash;
+      if (cashNow > 0 && buyBudget > cashNow) {
+        const suggest = Math.max(10000, Math.floor((cashNow * 0.9) / 10000) * 10000);
+        log(
+          `⚠ 매수 1회 예산(${won(buyBudget)}원)이 지금 살 수 있는 돈(${won(Math.floor(cashNow))}원)보다 큽니다. ` +
+            `실제로는 현금 범위 안에서만 주문하니 거부되지는 않지만, ` +
+            `[매수 1회 예산]을 ${won(suggest)}원 이하로 낮춰두면 계산이 명확해집니다.`
+        );
+      }
+    } catch {
+      // 조회 실패는 넘어간다 — 매수 시점에 다시 확인한다
+    }
+  }
   log(`보유 상태: ${state.position ? `${won(state.position.qty)}주 보유 중` : "없음"}`);
   logLine(`엔진 시작 ${code} (${live ? "주문 실행" : "연습"})`);
 
@@ -314,7 +332,9 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
           }
           // 수수료·호가 변동 여유로 0.5% 남긴다
           const spendable = Math.min(buyBudget, cash === Infinity ? buyBudget : cash * 0.995);
-          const qty = Math.floor(spendable / p.price);
+          let qty = Math.floor(spendable / p.price);
+          // 증권사가 직접 알려준 최대 매수가능수량이 있으면 그 이상은 절대 주문하지 않는다
+          if (buyable?.qty > 0) qty = Math.min(qty, buyable.qty);
           if (config.mode === "real" && state.dayStats.orders >= config.maxDailyOrders) {
             log(`⏸ 매수 신호가 왔지만 오늘 주문 한도(${config.maxDailyOrders}회)에 도달해 신규 매수를 건너뜁니다.`);
           } else if (qty < 1) {

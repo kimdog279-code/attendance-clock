@@ -694,6 +694,25 @@ function syncEngine(st) {
   }
 }
 
+$("#btnResetEngine").addEventListener("click", async () => {
+  const name = engineName(currentCode);
+  if (!confirm(
+    `${name}(${currentCode})의 자동매매 기록을 초기화합니다.\n\n` +
+    `· '오늘 이미 매수함' 같은 기록이 지워져 다시 매수할 수 있게 됩니다\n` +
+    `· 실제 보유 주식과 계좌는 전혀 건드리지 않습니다\n` +
+    `· 자동매매가 실행 중이면 먼저 정지해야 합니다\n\n초기화할까요?`
+  )) return;
+  try {
+    const r = await api("/api/engine/reset", { method: "POST", body: { code: currentCode } });
+    $("#resetNote").textContent =
+      r.removed.length > 0
+        ? `✅ ${name} 기록을 지웠습니다 (${r.removed.join(", ")}). 자동매매를 다시 시작하세요.`
+        : `${name}은 지울 기록이 없습니다 (이미 깨끗한 상태)`;
+  } catch (e) {
+    $("#resetNote").textContent = e.message;
+  }
+});
+
 $("#btnEngine").addEventListener("click", async () => {
   try {
     const live = document.querySelector('input[name="engMode"]:checked').value === "live";

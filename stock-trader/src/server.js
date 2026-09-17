@@ -428,6 +428,23 @@ async function handleApi(req, res, pathname, body) {
     return recommend(loadDaily(code));
   }
 
+  if (pathname === "/api/engine/reset" && req.method === "POST") {
+    if (engines.get(code)?.running) {
+      throw new Error("이 종목의 자동매매가 실행 중입니다. 먼저 [정지]를 누른 뒤 초기화해주세요.");
+    }
+    let mode = "paper";
+    try { mode = loadConfig().mode; } catch {}
+    const removed = [];
+    for (const kind of ["live", "practice"]) {
+      const f = path.join(projectRoot(), "data", `engine-${code}-${mode}-${kind}.json`);
+      if (fs.existsSync(f)) {
+        fs.rmSync(f);
+        removed.push(kind === "live" ? "자동 주문" : "연습");
+      }
+    }
+    return { removed, mode };
+  }
+
   if (pathname === "/api/engine/stop" && req.method === "POST") {
     if (body.code) {
       engines.get(body.code)?.stop?.();

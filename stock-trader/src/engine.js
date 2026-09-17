@@ -127,6 +127,9 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
 
   const stopLossPct = Math.max(0, Number(config.stopLossPercent ?? 0));
 
+  let lastErrorMessage = null;
+  let sameErrorCount = 0;
+
   let stopped = false;
   stopPromise.then(() => {
     stopped = true;
@@ -239,6 +242,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       const history = loadDaily(code).filter((c) => c.date < today);
       const p = await getPrice(code);
       currentPrice = p.price;
+      lastErrorMessage = null; // 시세 조회가 성공했으면 오류 상태 해제
       const quote = { price: p.price, open: p.open, today };
       const { signal, note } = strat.signalNow(history, quote, state.position, stratParams);
 
@@ -275,16 +279,42 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
         state.lastSignal = { date: today, type: "buy" };
         if (live) {
           const { buy } = await import("./api/orders.js");
-          const qty = Math.floor(buyBudget / p.price);
+          const { getBalance, getBuyableCash } = await import("./api/balance.js");
+          // 예산만 보고 주문하면 현금이 모자랄 때 '주문가능금액 초과'로 계속 거부된다.
+          // 증권사의 매수가능금액을 먼저 묻고, 실패하면 잔고 예수금으로 대체한다.
+          let cash = Infinity;
+          const buyable = await getBuyableCash(code, null);
+          if (buyable) {
+            cash = buyable.amount;
+          } else {
+            try {
+              cash = (await getBalance()).cash;
+            } catch (err) {
+              log(`가용 현금 확인 실패, 예산 기준으로 진행합니다: ${err.message}`);
+            }
+          }
+          // 수수료·호가 변동 여유로 0.5% 남긴다
+          const spendable = Math.min(buyBudget, cash === Infinity ? buyBudget : cash * 0.995);
+          const qty = Math.floor(spendable / p.price);
           if (config.mode === "real" && state.dayStats.orders >= config.maxDailyOrders) {
             log(`⏸ 매수 신호가 왔지만 오늘 주문 한도(${config.maxDailyOrders}회)에 도달해 신규 매수를 건너뜁니다.`);
           } else if (qty < 1) {
-            log(`🔔 매수 신호! 하지만 예산(${won(buyBudget)}원)으로 1주도 살 수 없어 건너뜁니다.`);
+            log(
+              `🔔 매수 신호! 하지만 살 수 있는 돈이 부족해 건너뜁니다 ` +
+                `(예산 ${won(buyBudget)}원 · 가용 현금 ${cash === Infinity ? "확인 불가" : won(Math.floor(cash)) + "원"} · 주가 ${won(p.price)}원). ` +
+                `오늘은 이 종목 매수를 더 시도하지 않습니다.`
+            );
+            state.stoppedOut = { date: today, reason: "cash" }; // 같은 날 반복 시도 방지
+            saveState(code, state, live);
           } else {
             const r = await buy(code, qty);
             state.position = { qty, entryPrice: p.price, date: today };
             if (config.mode === "real") state.dayStats.orders++;
-            log(`🟢 매수 주문 실행! ${qty}주 (주문번호 ${r.orderNo})`);
+            const short = spendable < buyBudget - p.price;
+            log(
+              `🟢 매수 주문 실행! ${qty}주 (약 ${won(qty * p.price)}원, 주문번호 ${r.orderNo})` +
+                (short ? ` — 현금이 부족해 예산(${won(buyBudget)}원)보다 적게 샀습니다` : "")
+            );
             logLine(`매수 주문 ${code} ${qty}주 @ ${p.price} [${strat.name}]`);
           }
         } else {
@@ -299,8 +329,18 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
         saveState(code, state, live);
       }
     } catch (err) {
-      log(`오류 (계속 재시도합니다): ${err.message}`);
-      logLine(`오류: ${err.message}`);
+      // 같은 오류가 30초마다 반복되면 화면이 도배된다 — 처음과 그 뒤 10회마다만 알린다
+      if (err.message === lastErrorMessage) {
+        sameErrorCount++;
+        if (sameErrorCount % 10 === 0) {
+          log(`(같은 오류가 ${sameErrorCount + 1}번째 반복 중입니다: ${err.message})`);
+        }
+      } else {
+        lastErrorMessage = err.message;
+        sameErrorCount = 0;
+        log(`오류 (계속 재시도합니다): ${err.message}`);
+        logLine(`오류: ${err.message}`);
+      }
     }
 
     await Promise.race([sleep(pollMs), stopPromise]);

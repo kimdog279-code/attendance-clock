@@ -55,3 +55,33 @@ export async function getBalance() {
     totalProfitLoss: Number(summary.evlu_pfls_smtl_amt ?? 0),
   };
 }
+
+// 매수가능금액 조회 — "이 종목을 지금 얼마어치 살 수 있나"를 증권사에 직접 묻는다.
+// 잔고의 예수금은 미결제 대금 때문에 실제 주문가능액과 다를 수 있어서 이 API가 정확하다.
+// 조회에 실패하면 null을 돌려주고, 호출부가 잔고 기준으로 대체하게 한다.
+export async function getBuyableCash(stockCode, price) {
+  const config = loadConfig();
+  try {
+    const data = await kisRequest({
+      path: "/uapi/domestic-stock/v1/trading/inquire-psbl-order",
+      trId: trIdFor("TTTC8908R"),
+      params: {
+        CANO: config.cano,
+        ACNT_PRDT_CD: config.acntPrdtCd,
+        PDNO: stockCode,
+        ORD_UNPR: String(price ?? 0),
+        ORD_DVSN: price ? "00" : "01", // 지정가/시장가
+        CMA_EVLU_AMT_ICLD_YN: "N",
+        OVRS_ICLD_YN: "N",
+      },
+    });
+    const o = data.output ?? {};
+    // 미수(빚) 없이 살 수 있는 금액을 우선 사용한다
+    const amount = Number(o.nrcvb_buy_amt ?? 0) || Number(o.ord_psbl_cash ?? 0);
+    const qty = Number(o.nrcvb_buy_qty ?? 0);
+    if (!amount && !qty) return null;
+    return { amount, qty };
+  } catch {
+    return null;
+  }
+}

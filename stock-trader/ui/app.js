@@ -596,10 +596,13 @@ $("#btnRecommend").addEventListener("click", async () => {
 // ── 자동매매 매수 예산 ─────────────────────────────────────────
 function renderStopLoss(s) {
   $("#engStopLoss").value = s.stopLossPercent;
+  const v = s.stopLossPercent;
   $("#stopLossNote").textContent =
-    s.stopLossPercent > 0
-      ? "전략 신호와 무관하게 먼저 실행됩니다 (손절한 날은 재매수 안 함)"
-      : "⚠ 0 = 손절 없음 — 손실이 무한정 커질 수 있습니다";
+    v === 0
+      ? "⚠ 0 = 손절 없음 — 한 번에 -30% 넘게 맞을 수 있습니다"
+      : v < 8
+        ? `⚠ ${v}%는 너무 좁습니다 — 변동성 돌파는 진입가가 그날 고점 부근이라 일중 흔들림에 그냥 털립니다 (권장 15%)`
+        : "전략 신호와 무관하게 먼저 실행됩니다 (손절한 날은 재매수 안 함)";
 }
 
 $("#btnSaveStopLoss").addEventListener("click", async () => {

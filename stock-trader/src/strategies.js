@@ -4,7 +4,11 @@
 //  - signalNow(history, quote, position, params): 자동매매 엔진용 실시간 판정
 const FEE = 0.00015; // 수수료 0.015%
 const TAX = 0.0015; // 거래세 0.15% (매도)
+// 슬리피지 0.1% — 시장가 주문은 호가 한두 틱 불리하게 체결된다.
+// 0%로 가정하면 매매가 잦은 전략이 실제보다 훨씬 좋아 보인다 (13,000원대 종목 1틱 = 0.08%).
+const SLIP = 0.001;
 const CASH = 10_000_000;
+const kw = (n) => Math.round(n).toLocaleString("ko-KR");
 
 const sma = (arr, n, i) => {
   let s = 0;
@@ -39,13 +43,14 @@ function simulate(candles, warmup, signalAt) {
     const want = signalAt(i, qty > 0);
     const px = candles[i + 1].open;
     if (want === "buy" && qty === 0) {
-      qty = Math.floor(cash / (px * (1 + FEE)));
+      const fill = px * (1 + SLIP); // 살 때는 조금 비싸게 체결된다
+      qty = Math.floor(cash / (fill * (1 + FEE)));
       if (qty > 0) {
-        entryCost = qty * px * (1 + FEE);
+        entryCost = qty * fill * (1 + FEE);
         cash -= entryCost;
       }
     } else if (want === "sell" && qty > 0) {
-      const proceeds = qty * px * (1 - FEE - TAX);
+      const proceeds = qty * px * (1 - SLIP) * (1 - FEE - TAX);
       cash += proceeds;
       sells++;
       if (proceeds > entryCost) wins++;
@@ -145,24 +150,58 @@ export const STRATEGIES = {
 
   vb: {
     name: "변동성 돌파",
-    label: (p) => `변동성 돌파 (k=${p.k}, 다음날 아침 청산)`,
-    grid: [{ k: 0.5 }, { k: 0.3 }],
-    // 당일 시가 + k×전일변동폭 돌파 시 매수, 하룻밤 보유 후 다음 날 시가 청산.
-    // 포지션 수명이 하루라 낙폭은 작지만, 매매가 잦아 체결 불리(슬리피지)에 민감하다.
+    label: (p) =>
+      `변동성 돌파 (k=${p.k}, ${p.roll !== false ? "갭업이면 이월" : "다음날 아침 청산"})`,
+    grid: [
+      { k: 0.5, roll: true },
+      { k: 0.3, roll: true },
+      { k: 0.5, roll: false },
+      { k: 0.3, roll: false },
+    ],
+    // 당일 시가 + k×전일변동폭 돌파 시 매수.
+    //
+    // 청산 규칙 두 가지:
+    //  - roll:false — 다음 날 시가에 무조건 청산 (원래 규칙). 보유 수명이 하루라 낙폭은
+    //    작지만, 판 값보다 되사는 값이 늘 비싸서(청산가≈시가, 재매수가=시가+k×전일변동폭)
+    //    "아침에 싸게 팔고 다시 비싸게 사는" 손실이 쌓인다.
+    //  - roll:true  — 시가가 전일 종가보다 높게 출발하면(갭업) 팔지 않고 하루 더 들고 간다.
+    //    갭업이 아니면 기존대로 청산하되, 그날은 되사지 않는다. 두 값 모두 09:00에
+    //    알 수 있어 미래참조가 없다. 매매 횟수가 절반으로 줄어 비용도 절반이 된다.
     backtest(candles, p) {
+      const roll = p.roll !== false;
       let equity = CASH, peak = CASH, mdd = 0, wins = 0, trades = 0;
-      for (let i = 1; i < candles.length - 1; i++) {
-        const target = candles[i].open + p.k * (candles[i - 1].high - candles[i - 1].low);
-        if (candles[i].high >= target) {
-          const exit = candles[i + 1].open;
-          const gross = exit / target;
-          const net = gross * (1 - FEE) * (1 - FEE - TAX);
-          equity *= net;
-          trades++;
-          if (net > 1) wins++;
+      let entry = 0; // 0이면 미보유, 아니면 진입 체결가
+      let exitedOn = -1; // 청산한 날 (이월 규칙에서는 그날 재매수 금지)
+      for (let i = 1; i < candles.length; i++) {
+        const d = candles[i];
+        // ① 아침 — 보유 중이면 청산할지 판정
+        if (entry > 0) {
+          const gapUp = d.open > candles[i - 1].close;
+          if (!roll || !gapUp) {
+            const net = ((d.open * (1 - SLIP)) / entry) * (1 - FEE) * (1 - FEE - TAX);
+            equity *= net;
+            trades++;
+            if (net > 1) wins++;
+            entry = 0;
+            if (roll) exitedOn = i;
+          }
         }
-        if (equity > peak) peak = equity;
-        mdd = Math.max(mdd, (peak - equity) / peak);
+        // ② 장중 — 미보유이고 오늘 청산한 게 아니면 돌파 여부 확인
+        //    (마지막 날은 청산할 다음 날이 없으므로 진입하지 않는다)
+        if (entry === 0 && i !== exitedOn && i < candles.length - 1) {
+          const target = d.open + p.k * (candles[i - 1].high - candles[i - 1].low);
+          if (d.high >= target) entry = target * (1 + SLIP);
+        }
+        // 보유 중에는 평가액 기준으로 낙폭을 잰다 (이월 규칙은 여러 날 들고 갈 수 있다)
+        const eq = entry > 0 ? equity * (d.close / entry) : equity;
+        if (eq > peak) peak = eq;
+        mdd = Math.max(mdd, (peak - eq) / peak);
+      }
+      // 마지막에 들고 있으면 종가로 정리해서 성적에 포함한다
+      if (entry > 0) {
+        const last = candles[candles.length - 1].close;
+        equity *= ((last * (1 - SLIP)) / entry) * (1 - FEE) * (1 - FEE - TAX);
+        trades++;
       }
       return {
         totalReturn: equity / CASH - 1,
@@ -175,15 +214,27 @@ export const STRATEGIES = {
     signalNow(history, quote, position, p) {
       const prev = history[history.length - 1];
       if (!prev) return { signal: null, note: "데이터 부족" };
+      const roll = p.roll !== false;
       const target = quote.open + p.k * (prev.high - prev.low);
-      // 어제(또는 그 전) 산 포지션은 새 날 첫 확인 때 청산
+      // 어제(또는 그 전에) 산 포지션은 새 날 첫 확인 때 판정한다
       if (position && position.date && position.date < quote.today) {
-        return { signal: "sell", note: "다음날 아침 청산 규칙" };
+        if (roll && quote.open > prev.close) {
+          return {
+            signal: null,
+            note: `갭업 출발 (시가 ${kw(quote.open)} > 전일 종가 ${kw(prev.close)}) — 팔지 않고 이월 보유`,
+          };
+        }
+        return {
+          signal: "sell",
+          note: roll ? "갭업이 아니어서 아침 청산" : "다음날 아침 청산 규칙",
+          // 이월 규칙에서는 청산한 날 되사지 않는다 (되사는 값이 늘 더 비싸다)
+          blockRebuyToday: roll,
+        };
       }
       if (!position && quote.price >= target) {
-        return { signal: "buy", note: `돌파선 ${Math.round(target).toLocaleString("ko-KR")} 넘음` };
+        return { signal: "buy", note: `돌파선 ${kw(target)} 넘음` };
       }
-      return { signal: null, note: `돌파선 ${Math.round(target).toLocaleString("ko-KR")}` };
+      return { signal: null, note: `돌파선 ${kw(target)}` };
     },
   },
 };
@@ -196,7 +247,12 @@ export function buyHold(candles) {
     if (c.close > peak) peak = c.close;
     mdd = Math.max(mdd, (peak - c.close) / peak);
   }
-  return { totalReturn: (end * (1 - FEE - TAX)) / (start * (1 + FEE)) - 1, maxDrawdown: mdd, tradeCount: 1, winRate: null };
+  return {
+    totalReturn: (end * (1 - SLIP) * (1 - FEE - TAX)) / (start * (1 + SLIP) * (1 + FEE)) - 1,
+    maxDrawdown: mdd,
+    tradeCount: 1,
+    winRate: null,
+  };
 }
 
 // ── 전략 추천 ──────────────────────────────────────────────────

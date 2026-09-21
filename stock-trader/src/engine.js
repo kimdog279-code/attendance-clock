@@ -263,7 +263,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       currentPrice = p.price;
       lastErrorMessage = null; // 시세 조회가 성공했으면 오류 상태 해제
       const quote = { price: p.price, open: p.open, today };
-      const { signal, note } = strat.signalNow(history, quote, state.position, stratParams);
+      const { signal, note, blockRebuyToday } = strat.signalNow(history, quote, state.position, stratParams);
 
       if (note === "데이터 부족") {
         log("일봉 데이터가 부족합니다. [데이터 수집]을 먼저 실행해주세요.");
@@ -293,6 +293,8 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
 
       // 손절한 날은 하루 종일 재매수 금지. 현금 부족은 30분 뒤 다시 시도.
       const stoppedOutToday = state.stoppedOut?.date === today;
+      // 아침에 청산한 날도 재매수 금지 (전략이 요청한 경우) — 되사는 값이 판 값보다 늘 비싸다
+      const exitedToday = state.exitedToday?.date === today;
       const cashBlocked = state.cashShortUntil != null && Date.now() < state.cashShortUntil;
       const alreadyFired = state.lastSignal?.date === today && state.lastSignal?.type === signal;
 
@@ -301,6 +303,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
         let block = null;
         if (alreadyFired) block = "오늘 이미 매수가 한 번 실행됐습니다 (하루 1회 제한)";
         else if (stoppedOutToday) block = "오늘 손절한 종목이라 재매수하지 않습니다";
+        else if (exitedToday) block = "오늘 아침에 청산한 종목이라 다시 사지 않습니다 (되사면 더 비쌉니다)";
         else if (cashBlocked) {
           const mins = Math.ceil((state.cashShortUntil - Date.now()) / 60000);
           block = `현금이 부족해 대기 중입니다 (약 ${mins}분 뒤 다시 확인)`;
@@ -313,7 +316,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
 
       // 주문이 실패하면 lastSignal을 남기지 않는다 — 안 샀는데 '오늘 샀음'으로
       // 기록되면 그날 내내 매수 기회를 놓치기 때문
-      if (signal === "buy" && !state.position && !alreadyFired && !stoppedOutToday && !cashBlocked) {
+      if (signal === "buy" && !state.position && !alreadyFired && !stoppedOutToday && !exitedToday && !cashBlocked) {
         if (live) {
           const { buy } = await import("./api/orders.js");
           const { getBalance, getBuyableCash } = await import("./api/balance.js");
@@ -368,6 +371,7 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       } else if (signal === "sell" && state.position && !alreadyFired) {
         state.lastSignal = { date: today, type: "sell" };
         await doSell(note, false);
+        if (blockRebuyToday) state.exitedToday = { date: today };
         saveState(code, state, live);
       }
     } catch (err) {

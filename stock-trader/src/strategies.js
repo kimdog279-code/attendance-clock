@@ -39,6 +39,9 @@ function bandsAt(closes, period, k, i) {
 function simulate(candles, warmup, signalAt) {
   let cash = CASH, qty = 0, entryCost = 0;
   let peak = CASH, mdd = 0, wins = 0, sells = 0;
+  // 한 트레이드 안에서 최악에 몇 % 물렸는지(MAE). 손절선을 정할 때 쓴다 —
+  // 이 값보다 좁은 손절선은 전략이 이기던 트레이드도 중간에 잘라버린다.
+  let entryPx = 0, worstMae = 0;
   for (let i = warmup; i < candles.length - 1; i++) {
     const want = signalAt(i, qty > 0);
     const px = candles[i + 1].open;
@@ -48,6 +51,7 @@ function simulate(candles, warmup, signalAt) {
       if (qty > 0) {
         entryCost = qty * fill * (1 + FEE);
         cash -= entryCost;
+        entryPx = fill;
       }
     } else if (want === "sell" && qty > 0) {
       const proceeds = qty * px * (1 - SLIP) * (1 - FEE - TAX);
@@ -55,6 +59,10 @@ function simulate(candles, warmup, signalAt) {
       sells++;
       if (proceeds > entryCost) wins++;
       qty = 0;
+    }
+    // 보유 중이면 그날 저가까지 얼마나 밀렸는지 기록한다
+    if (qty > 0 && entryPx > 0) {
+      worstMae = Math.max(worstMae, (entryPx - candles[i + 1].low) / entryPx);
     }
     const eq = cash + qty * candles[i + 1].close;
     if (eq > peak) peak = eq;
@@ -66,6 +74,7 @@ function simulate(candles, warmup, signalAt) {
     maxDrawdown: mdd,
     tradeCount: sells,
     winRate: sells ? wins / sells : null,
+    worstTradeDrawdown: worstMae,
     finalEquity: Math.round(finalEquity),
   };
 }
@@ -172,6 +181,7 @@ export const STRATEGIES = {
       let equity = CASH, peak = CASH, mdd = 0, wins = 0, trades = 0;
       let entry = 0; // 0이면 미보유, 아니면 진입 체결가
       let exitedOn = -1; // 청산한 날 (이월 규칙에서는 그날 재매수 금지)
+      let worstMae = 0; // 한 트레이드 안에서 최악에 몇 % 물렸나
       for (let i = 1; i < candles.length; i++) {
         const d = candles[i];
         // ① 아침 — 보유 중이면 청산할지 판정
@@ -192,6 +202,7 @@ export const STRATEGIES = {
           const target = d.open + p.k * (candles[i - 1].high - candles[i - 1].low);
           if (d.high >= target) entry = target * (1 + SLIP);
         }
+        if (entry > 0) worstMae = Math.max(worstMae, (entry - d.low) / entry);
         // 보유 중에는 평가액 기준으로 낙폭을 잰다 (이월 규칙은 여러 날 들고 갈 수 있다)
         const eq = entry > 0 ? equity * (d.close / entry) : equity;
         if (eq > peak) peak = eq;
@@ -208,6 +219,7 @@ export const STRATEGIES = {
         maxDrawdown: mdd,
         tradeCount: trades,
         winRate: trades ? wins / trades : null,
+        worstTradeDrawdown: worstMae,
         finalEquity: Math.round(equity),
       };
     },
@@ -242,16 +254,18 @@ export const STRATEGIES = {
 // 단순 보유 성적 (비교 기준)
 export function buyHold(candles) {
   const start = candles[0].open, end = candles[candles.length - 1].close;
-  let peak = 0, mdd = 0;
+  let peak = 0, mdd = 0, worstMae = 0;
   for (const c of candles) {
     if (c.close > peak) peak = c.close;
     mdd = Math.max(mdd, (peak - c.close) / peak);
+    worstMae = Math.max(worstMae, (start - c.low) / start);
   }
   return {
     totalReturn: (end * (1 - SLIP) * (1 - FEE - TAX)) / (start * (1 + SLIP) * (1 + FEE)) - 1,
     maxDrawdown: mdd,
     tradeCount: 1,
     winRate: null,
+    worstTradeDrawdown: worstMae,
   };
 }
 

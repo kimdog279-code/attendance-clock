@@ -341,7 +341,9 @@ $("#btnBacktest").addEventListener("click", async () => {
         <div class="stat"><div class="k">그냥 사서 보유했다면</div><div class="v" style="color:${cls(r.buyHoldReturn)}">${pct(r.buyHoldReturn)}</div></div>
         <div class="stat"><div class="k">중간 최대 하락폭</div><div class="v">${pct(r.maxDrawdown)}</div></div>
         <div class="stat"><div class="k">매매 횟수 · 승률</div><div class="v">${r.tradeCount}회 · ${r.winRate == null ? "-" : pct(r.winRate)}</div></div>
+        <div class="stat"><div class="k">한 번에 최악 -</div><div class="v">${r.worstTradeDrawdown == null ? "-" : pct(r.worstTradeDrawdown)}</div></div>
       </div>
+      ${stopHint(r.worstTradeDrawdown, r.tradeCount)}
       <div class="hint" style="margin-top:8px">기간 ${r.period} · 1,000만원 → ${won(r.finalEquity)}원 · 과거 성과가 미래를 보장하지 않습니다</div>`;
   } catch (e) {
     el.innerHTML = `<span class="msg err">${e.message}</span>`;
@@ -535,11 +537,12 @@ $("#btnRecommend").addEventListener("click", async () => {
     const trophy = (won) => (won ? "🏆 " : "");
     const cashRow = `<tr>
       <td>${trophy(v === "avoid")}현금 보유 (아무것도 안 하기)</td>
-      <td class="num">0.0%</td><td class="num">0.0%</td><td class="num">-</td></tr>`;
+      <td class="num">0.0%</td><td class="num">0.0%</td><td class="num">-</td><td class="num">-</td></tr>`;
     const bhRow = `<tr>
       <td>${trophy(v === "hold")}단순 보유 (사서 안 팔기)</td>
       <td class="num" style="color:${col(r.buyHoldValidate.totalReturn)}">${pct(r.buyHoldValidate.totalReturn)}</td>
       <td class="num">${pct(r.buyHoldValidate.maxDrawdown)}</td>
+      <td class="num">${pct(r.buyHoldValidate.worstTradeDrawdown ?? 0)}</td>
       <td class="num">-</td></tr>`;
     const rows = r.finalists
       .map(
@@ -547,6 +550,7 @@ $("#btnRecommend").addEventListener("click", async () => {
           <td>${trophy(v === "strategy" && i === 0)}${f.label}${f.validate.tradeCount === 0 ? ' <span class="hint">(시험 기간에 신호 없음)</span>' : ""}</td>
           <td class="num" style="color:${col(f.validate.totalReturn)}">${pct(f.validate.totalReturn)}</td>
           <td class="num">${pct(f.validate.maxDrawdown)}</td>
+          <td class="num">${f.validate.tradeCount ? pct(f.validate.worstTradeDrawdown ?? 0) : "-"}</td>
           <td class="num">${f.validate.tradeCount}회</td></tr>`
       )
       .join("");
@@ -557,7 +561,8 @@ $("#btnRecommend").addEventListener("click", async () => {
       strategy: `<b>추천: ${rec.label}</b><br/>
          시험 기간(최근 1년) 수익률 <b style="color:${col(rec.validate.totalReturn)}">${pct(rec.validate.totalReturn)}</b>
          (그냥 보유했다면 ${pct(r.buyHoldValidate.totalReturn)})
-         · 최대 하락폭 ${pct(rec.validate.maxDrawdown)} · 매매 ${rec.validate.tradeCount}회`,
+         · 최대 하락폭 ${pct(rec.validate.maxDrawdown)} · 매매 ${rec.validate.tradeCount}회
+         ${stopHint(rec.validate.worstTradeDrawdown, rec.validate.tradeCount)}`,
       avoid: `<b>결론: 최근 1년 기준, 이 종목은 "사지 않는 것"이 가장 나았습니다</b><br/>
          그냥 보유했다면 <b style="color:${col(r.buyHoldValidate.totalReturn)}">${pct(r.buyHoldValidate.totalReturn)}</b>이고,
          타이밍 전략들도 위험(중간 하락폭) 대비 성과가 충분하지 않았어요.
@@ -567,7 +572,7 @@ $("#btnRecommend").addEventListener("click", async () => {
     el.innerHTML = `
       <div class="notice" style="margin-bottom:12px">${headlines[v]}</div>
       <table>
-        <tr><th>비교 (시험 기간 성적)</th><th class="num">시험 수익률</th><th class="num">최대 하락폭</th><th class="num">매매</th></tr>
+        <tr><th>비교 (시험 기간 성적)</th><th class="num">시험 수익률</th><th class="num">최대 하락폭</th><th class="num">한 번에 최악</th><th class="num">매매</th></tr>
         ${cashRow}
         ${bhRow}
         ${rows}
@@ -593,9 +598,26 @@ $("#btnRecommend").addEventListener("click", async () => {
   }
 });
 
+
+// 백테스트가 보유 중 겪은 최악 평가손실(MAE)로 "손절선을 몇 %에 둬야 하나"를 안내한다.
+// 이 값보다 좁은 손절선은 전략이 이기던 트레이드까지 중간에 잘라버린다.
+function stopHint(mae, tradeCount) {
+  if (mae == null || !tradeCount) return "";
+  const worst = (mae * 100).toFixed(1);
+  const safe = Math.ceil((mae * 100 + 3) / 5) * 5; // 여유 3%p 두고 5% 단위로 올림
+  const cur = window.__stopLossPercent;
+  const conflict = cur > 0 && cur / 100 <= mae;
+  return `<div class="hint" style="margin-top:8px${conflict ? ";color:var(--down)" : ""}">
+    ${conflict ? "⚠ " : ""}이 전략은 보유 중 <b>최악 -${worst}%</b>까지 밀린 적이 있습니다 →
+    손절선은 <b>${safe}% 이상</b>이어야 이기던 매매를 자르지 않습니다${
+      conflict ? ` (지금 설정 ${cur}%는 이 매매를 중간에 잘랐을 겁니다)` : ""
+    }.</div>`;
+}
+
 // ── 자동매매 매수 예산 ─────────────────────────────────────────
 function renderStopLoss(s) {
   $("#engStopLoss").value = s.stopLossPercent;
+  window.__stopLossPercent = s.stopLossPercent;
   const v = s.stopLossPercent;
   $("#stopLossNote").textContent =
     v === 0

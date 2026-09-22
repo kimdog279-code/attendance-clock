@@ -597,6 +597,7 @@ $("#btnRecommend").addEventListener("click", async () => {
         }
       }
       sel.scrollIntoView({ behavior: "smooth", block: "center" });
+      applyStopFor(rec, analyzedCode);
     });
   } catch (e) {
     el.innerHTML = `<span class="msg err">${e.message}</span>`;
@@ -606,10 +607,15 @@ $("#btnRecommend").addEventListener("click", async () => {
 
 // 백테스트가 보유 중 겪은 최악 평가손실(MAE)로 "손절선을 몇 %에 둬야 하나"를 안내한다.
 // 이 값보다 좁은 손절선은 전략이 이기던 트레이드까지 중간에 잘라버린다.
+// 보유 중 최악 손실(MAE)에 여유 3%p를 두고 5% 단위로 올린 값
+function suggestedStop(mae) {
+  return Math.ceil((mae * 100 + 3) / 5) * 5;
+}
+
 function stopHint(mae, tradeCount) {
   if (mae == null || !tradeCount) return "";
   const worst = (mae * 100).toFixed(1);
-  const safe = Math.ceil((mae * 100 + 3) / 5) * 5; // 여유 3%p 두고 5% 단위로 올림
+  const safe = suggestedStop(mae);
   const cur = window.__stopLossPercent;
   const conflict = cur > 0 && cur / 100 <= mae;
   return `<div class="hint" style="margin-top:8px${conflict ? ";color:var(--down)" : ""}">
@@ -662,6 +668,26 @@ $("#btnSaveStopLoss").addEventListener("click", async () => {
 });
 
 $("#stopLossOnlyThis").addEventListener("change", () => renderStopLoss(null));
+
+// 추천 전략을 적용할 때, 그 전략이 실제로 겪은 최악 손실에 맞춰
+// 이 종목 전용 손절선까지 함께 저장한다 (전략마다 필요한 값이 다르다).
+async function applyStopFor(rec, code) {
+  const mae = rec?.validate?.worstTradeDrawdown;
+  if (mae == null || !rec?.validate?.tradeCount) return;
+  const safe = suggestedStop(mae);
+  try {
+    const r = await api("/api/settings", {
+      method: "POST",
+      body: { stopLossPercent: safe, stopLossCode: code },
+    });
+    renderStopLoss(r);
+    $("#stopLossNote").textContent =
+      `✅ 손절선을 ${safe}%로 맞췄습니다 (이 전략은 최악 -${(mae * 100).toFixed(1)}%까지 밀린 적이 있음) · ` +
+      $("#stopLossNote").textContent;
+  } catch (e) {
+    $("#stopLossNote").textContent = `손절선 자동 설정 실패 — 직접 ${safe}%로 넣어주세요 (${e.message})`;
+  }
+}
 
 function renderBudget(s) {
   $("#engBudget").value = s.autoTradeBudget;

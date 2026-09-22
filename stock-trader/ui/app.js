@@ -582,7 +582,12 @@ $("#btnRecommend").addEventListener("click", async () => {
         <span class="hint">연습 ${r.period.train} → 시험 ${r.period.validate} · 총 ${r.candidatesTried}개 조합 비교 · 과거 성과일 뿐 미래 보장이 아닙니다${v === "avoid" ? " · 그래도 전략을 쓰려면 자동매매 카드에서 직접 선택 가능" : ""}</span>
       </div>`;
     if (!showApply) return;
+    const analyzedCode = currentCode; // 이 결과가 어느 종목 것인지 붙잡아 둔다
     $("#btnUseRec").addEventListener("click", () => {
+      if (analyzedCode !== currentCode) {
+        alert(`이 분석은 ${analyzedCode} 결과입니다. 지금 선택된 종목(${currentCode})에 적용하려면 [분석 시작]을 다시 눌러주세요.`);
+        return;
+      }
       const sel = $("#engStrategySel");
       const want = JSON.stringify({ id: rec.id, params: rec.params });
       for (const opt of sel.options) {
@@ -827,11 +832,25 @@ $("#btnFav").addEventListener("click", async () => {
   } catch {}
 });
 
+// 종목별 분석 카드의 처음 안내문 — 종목이 바뀌면 여기로 되돌린다
+const CARD_PLACEHOLDERS = {};
+for (const id of ["recResult", "btResult", "chartMsg"]) {
+  const el = document.getElementById(id);
+  if (el) CARD_PLACEHOLDERS[id] = el.innerHTML;
+}
+
 function setCode(code, name) {
   currentCode = code;
   $("#inCode").value = code;
   // 종목이 바뀌면 지정가는 이전 종목 가격이므로 반드시 비운다
   $("#inPrice").value = "";
+  // 이전 종목의 분석 결과가 남아 있으면 다른 종목 화면에서 그걸 보고
+  // [이 전략을 자동매매에 적용]을 눌러버릴 수 있다 — 반드시 지운다.
+  // (종목 스캐너·매매 성과 분석은 종목과 무관하므로 그대로 둔다)
+  for (const [id, html] of Object.entries(CARD_PLACEHOLDERS)) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  }
   $("#stockName").textContent = name ?? "";
   renderChips();
   showStockName(code).then((resolved) => recordRecent(code, resolved || name || ""));

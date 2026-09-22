@@ -620,23 +620,39 @@ function stopHint(mae, tradeCount) {
 }
 
 // ── 자동매매 매수 예산 ─────────────────────────────────────────
+let stopLossSettings = { stopLossPercent: 15, stopLossByCode: {} };
+
+// 손절선은 종목별로 따로 정할 수 있다 — 전략마다 정상 변동폭이 다르기 때문.
+// 화면에는 항상 '지금 선택한 종목에 실제로 적용될 값'을 보여준다.
 function renderStopLoss(s) {
-  $("#engStopLoss").value = s.stopLossPercent;
-  window.__stopLossPercent = s.stopLossPercent;
-  const v = s.stopLossPercent;
-  $("#stopLossNote").textContent =
+  if (s) stopLossSettings = { stopLossPercent: s.stopLossPercent, stopLossByCode: s.stopLossByCode ?? {} };
+  const own = stopLossSettings.stopLossByCode?.[currentCode];
+  const v = own != null ? Number(own) : Number(stopLossSettings.stopLossPercent);
+  $("#engStopLoss").value = v;
+  window.__stopLossPercent = v;
+  $("#stopLossOnlyThis").checked = own != null;
+  const base =
     v === 0
       ? "⚠ 0 = 손절 없음 — 한 번에 -30% 넘게 맞을 수 있습니다"
       : v < 8
-        ? `⚠ ${v}%는 너무 좁습니다 — 변동성 돌파는 진입가가 그날 고점 부근이라 일중 흔들림에 그냥 털립니다 (권장 15%)`
+        ? `⚠ ${v}%는 너무 좁습니다 — 대부분의 전략이 일중 흔들림에 그냥 털립니다`
         : "전략 신호와 무관하게 먼저 실행됩니다 (손절한 날은 재매수 안 함)";
+  $("#stopLossNote").textContent =
+    own != null ? `이 종목 전용 ${v}% (공통값 ${stopLossSettings.stopLossPercent}%) · ${base}` : base;
 }
 
 $("#btnSaveStopLoss").addEventListener("click", async () => {
   try {
+    const onlyThis = $("#stopLossOnlyThis").checked;
+    const wasOwn = stopLossSettings.stopLossByCode?.[currentCode] != null;
     const r = await api("/api/settings", {
       method: "POST",
-      body: { stopLossPercent: Number($("#engStopLoss").value) },
+      body: {
+        stopLossPercent: Number($("#engStopLoss").value),
+        // 체크를 껐는데 전에 이 종목 전용값이 있었다면 그 값을 지운다
+        ...(onlyThis || wasOwn ? { stopLossCode: currentCode } : {}),
+        ...(!onlyThis && wasOwn ? { clearStopLossCode: true } : {}),
+      },
     });
     renderStopLoss(r);
     $("#stopLossNote").textContent = "저장됨 · " + $("#stopLossNote").textContent;
@@ -644,6 +660,8 @@ $("#btnSaveStopLoss").addEventListener("click", async () => {
     $("#stopLossNote").textContent = e.message;
   }
 });
+
+$("#stopLossOnlyThis").addEventListener("change", () => renderStopLoss(null));
 
 function renderBudget(s) {
   $("#engBudget").value = s.autoTradeBudget;
@@ -852,6 +870,7 @@ function setCode(code, name) {
     if (el) el.innerHTML = html;
   }
   $("#stockName").textContent = name ?? "";
+  renderStopLoss(null); // 종목별 손절선이 다를 수 있다
   renderChips();
   showStockName(code).then((resolved) => recordRecent(code, resolved || name || ""));
   refreshAll();

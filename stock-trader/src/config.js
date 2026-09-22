@@ -101,6 +101,10 @@ export function loadConfig() {
     // 기본 15% — 변동성 돌파의 진입가는 이미 '시가+k×전일변동폭'이라 그날 고점 부근이다.
     // 거기서 -4%면 일중 꼬리(wick)에 걸려 털리기만 하고 성과를 크게 망친다.
     stopLossPercent: Number(raw.stopLossPercent ?? 15),
+    // 종목별 손절선(%) — 전략마다 정상 변동폭이 달라서 하나의 값으로는 맞출 수 없다.
+    // 예: 이동평균 크로스는 -9%면 충분하지만 RSI 역추세는 -25%까지 밀린다.
+    // 값이 없는 종목은 위의 기본 손절선을 쓴다.
+    stopLossByCode: raw.stopLossByCode && typeof raw.stopLossByCode === "object" ? raw.stopLossByCode : {},
     // 실전 자동매매: 하루 실현 손실이 이 금액을 넘으면 그날 자동매매 정지
     dailyLossLimit: Number(raw.dailyLossLimit ?? 100000),
     // 실전 자동매매: 하루 최대 주문 횟수 (신규 매수 제한, 매도는 항상 허용)

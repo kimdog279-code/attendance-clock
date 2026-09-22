@@ -171,7 +171,8 @@ async function handleApi(req, res, pathname, body) {
         allowRealAutoTrade: raw?.allowRealAutoTrade === true,
         maxOrderAmount: Number(raw?.maxOrderAmount ?? 100000),
         autoTradeBudget: Number(raw?.autoTradeBudget ?? 1000000),
-        stopLossPercent: Number(raw?.stopLossPercent ?? 4),
+        stopLossPercent: Number(raw?.stopLossPercent ?? 15),
+        stopLossByCode: raw?.stopLossByCode ?? {},
         dailyLossLimit: Number(raw?.dailyLossLimit ?? 100000),
         maxDailyOrders: Number(raw?.maxDailyOrders ?? 6),
       },
@@ -240,7 +241,16 @@ async function handleApi(req, res, pathname, body) {
     if (body.stopLossPercent != null) {
       const v = Number(body.stopLossPercent);
       if (!Number.isFinite(v) || v < 0 || v > 50) throw new Error("손절선은 0~50% 사이여야 합니다.");
-      raw.stopLossPercent = v;
+      // code가 함께 오면 그 종목에만 적용한다 (전략마다 필요한 손절선이 다르다)
+      if (body.stopLossCode) {
+        const c = String(body.stopLossCode);
+        if (!/^\d{6}$/.test(c)) throw new Error("종목코드가 올바르지 않습니다.");
+        raw.stopLossByCode = raw.stopLossByCode ?? {};
+        if (body.clearStopLossCode) delete raw.stopLossByCode[c];
+        else raw.stopLossByCode[c] = v;
+      } else {
+        raw.stopLossPercent = v;
+      }
     }
     if (body.dailyLossLimit != null) {
       const v = Number(body.dailyLossLimit);
@@ -262,7 +272,8 @@ async function handleApi(req, res, pathname, body) {
       allowRealAutoTrade: raw.allowRealAutoTrade === true,
       maxOrderAmount: raw.maxOrderAmount,
       autoTradeBudget: raw.autoTradeBudget,
-      stopLossPercent: raw.stopLossPercent ?? 4,
+      stopLossPercent: raw.stopLossPercent ?? 15,
+      stopLossByCode: raw.stopLossByCode ?? {},
       dailyLossLimit: raw.dailyLossLimit,
       maxDailyOrders: raw.maxDailyOrders,
     };

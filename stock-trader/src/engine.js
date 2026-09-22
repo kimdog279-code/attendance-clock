@@ -125,7 +125,10 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       ? Math.min(config.autoTradeBudget, config.maxOrderAmount)
       : config.autoTradeBudget;
 
-  const stopLossPct = Math.max(0, Number(config.stopLossPercent ?? 0));
+  // 이 종목에 따로 정한 손절선이 있으면 그것을, 없으면 공통 손절선을 쓴다
+  const perCode = config.stopLossByCode?.[code];
+  const usingPerCode = perCode != null && Number.isFinite(Number(perCode));
+  const stopLossPct = Math.max(0, Number(usingPerCode ? perCode : config.stopLossPercent ?? 0));
 
   let lastErrorMessage = null;
   let sameErrorCount = 0;
@@ -210,7 +213,10 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       `안전장치: 하루 손실 한도 ${won(config.dailyLossLimit)}원 · 하루 최대 ${config.maxDailyOrders}회 주문 · 매수 1회 ${won(buyBudget)}원`
     );
   }
-  log(`손절선: ${stopLossPct > 0 ? `매수가 대비 -${stopLossPct}% (전략과 무관하게 즉시 매도)` : "사용 안 함"}`);
+  log(
+    `손절선: ${stopLossPct > 0 ? `매수가 대비 -${stopLossPct}% (전략과 무관하게 즉시 매도)` : "사용 안 함"}` +
+      (usingPerCode ? " — 이 종목에 따로 정한 값" : "")
+  );
   // 예산이 계좌 현금보다 크면 매수 때마다 예산이 잘려서 헷갈린다 — 시작할 때 미리 알려준다
   if (live) {
     try {

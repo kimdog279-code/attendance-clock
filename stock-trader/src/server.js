@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { configExists, loadConfig, resetConfigCache, projectRoot, readRawConfig, writeRawConfig } from "./config.js";
 import { startEngine } from "./engine.js";
+import { loadSetups, saveSetup, runningSetups } from "./engineSetup.js";
 
 const PORT = 8321;
 const UI_DIR = path.join(projectRoot(), "ui");
@@ -128,12 +129,35 @@ async function startEngineBg(code, live, strategy) {
     strategyLabel: STRATEGIES[id].label(params),
   };
   engines.set(code, ent);
+  // 껐다 켜도 이어서 돌 수 있도록 "무엇을 어떻게 돌리고 있는지"를 남긴다
+  let mode = "paper";
+  try { mode = loadConfig().mode; } catch {}
+  saveSetup(code, { live, strategy: { id, params }, running: true, mode });
   const log = (msg) => pushEngineLog(`[${code}] `, msg);
   startEngine({ code, live, stopPromise, strategy: { id, params }, log })
     .catch((err) => log(`엔진 오류로 중단: ${err.message}`))
     .finally(() => {
       ent.running = false;
+      saveSetup(code, { running: false });
     });
+}
+
+// 프로그램을 다시 켰을 때, 마지막에 돌고 있던 자동매매를 이어서 시작한다.
+// [정지]를 눌러 멈춘 종목은 running:false로 남아 있어 되살아나지 않는다.
+async function resumeEngines() {
+  let mode = "paper";
+  try { mode = loadConfig().mode; } catch { return; }
+  const saved = runningSetups(mode);
+  if (saved.length === 0) return;
+  pushEngineLog("", `\n이전에 돌고 있던 자동매매 ${saved.length}종목을 이어서 시작합니다 (${mode === "real" ? "🚨 실전" : "모의투자"})`);
+  for (const s of saved) {
+    try {
+      await startEngineBg(s.code, s.live === true, s.strategy);
+    } catch (err) {
+      pushEngineLog(`[${s.code}] `, `이어서 시작하지 못했습니다: ${err.message}`);
+      saveSetup(s.code, { running: false });
+    }
+  }
 }
 
 function engineStatus() {
@@ -148,7 +172,7 @@ function engineStatus() {
     } catch {}
     return { code: e.code, live: e.live, running: e.running, strategyLabel: e.strategyLabel, position };
   });
-  return { engines: list, running: list.some((e) => e.running), logs: engineLogs.slice(-50) };
+  return { engines: list, running: list.some((e) => e.running), setups: loadSetups(), logs: engineLogs.slice(-50) };
 }
 
 // ── API 핸들러 ─────────────────────────────────────────────────
@@ -612,4 +636,6 @@ server.listen(PORT, SERVER_HOST, () => {
   }
   keepAwake();
   openBrowser();
+  // 마지막에 돌고 있던 자동매매를 이어서 시작 (설정이 없으면 아무 일도 안 한다)
+  resumeEngines().catch((err) => console.log(`자동매매 이어서 시작 실패: ${err.message}`));
 });

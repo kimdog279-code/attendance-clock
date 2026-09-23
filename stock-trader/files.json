@@ -10,6 +10,7 @@
   "src/prompt.js",
   "src/update.js",
   "src/engine.js",
+  "src/engineSetup.js",
   "src/strategies.js",
   "src/stockmaster.js",
   "src/scanner.js",

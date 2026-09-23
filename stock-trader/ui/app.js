@@ -728,7 +728,31 @@ function engineName(code) {
   );
 }
 
+let engineSetups = {};
+
+// 저장해 둔 전략·모드를 자동매매 카드에 되살린다 (프로그램을 껐다 켜도 유지)
+function restoreEngineSetup() {
+  const saved = engineSetups[currentCode];
+  if (!saved) return;
+  if (saved.strategy) {
+    const want = JSON.stringify({ id: saved.strategy.id, params: saved.strategy.params });
+    const sel = $("#engStrategySel");
+    for (const opt of sel.options) {
+      if (opt.value === want) {
+        sel.value = want;
+        break;
+      }
+    }
+  }
+  const radio = document.querySelector(`input[name="engMode"][value="${saved.live ? "live" : "practice"}"]`);
+  if (radio && !radio.disabled) radio.checked = true;
+}
+
 function syncEngine(st) {
+  if (st.setups) {
+    engineSetups = st.setups;
+    restoreEngineSetup();
+  }
   const logEl = $("#engineLog");
   const list = $("#engineList");
   const runningEngines = st.engines.filter((e) => e.running);
@@ -897,6 +921,7 @@ function setCode(code, name) {
   }
   $("#stockName").textContent = name ?? "";
   renderStopLoss(null); // 종목별 손절선이 다를 수 있다
+  restoreEngineSetup(); // 종목별로 저장해 둔 전략·모드 되살리기
   renderChips();
   showStockName(code).then((resolved) => recordRecent(code, resolved || name || ""));
   refreshAll();

@@ -42,9 +42,23 @@ function showSetupForm(target, canGoBack) {
   $("#setup").classList.remove("hidden");
 }
 
+// 화면 오른쪽 위 버전 표시.
+// 재시작 전에는 '내려받은 버전'과 '실제 돌아가는 버전'이 다르다 —
+// 내려받은 쪽만 보여주면 최신이 도는 걸로 오해하게 되므로 둘 다 보여준다.
+function renderVersion(diskVersion, bootVersion) {
+  const el = $("#version");
+  if (bootVersion && diskVersion !== bootVersion) {
+    el.textContent = `v${bootVersion} 실행 중 · v${diskVersion} 재시작 대기`;
+    el.style.color = "var(--warn, #e0a030)";
+  } else {
+    el.textContent = "v" + diskVersion;
+    el.style.color = "";
+  }
+}
+
 async function init() {
   const st = await api("/api/status");
-  $("#version").textContent = "v" + st.version;
+  renderVersion(st.version, st.bootVersion);
   MODE = st.mode;
   renderModeSwitch();
 
@@ -53,9 +67,9 @@ async function init() {
     const bar = $("#updateBar");
     bar.style.display = "flex";
     bar.innerHTML =
-      `<span>🔄 <b>업데이트(v${st.version})가 아직 적용되지 않았습니다</b> — ` +
-      `검은 창을 닫고 <b>시작하기</b>를 다시 실행해주세요. ` +
-      `(현재 실행 중: v${st.bootVersion})</span>`;
+      `<span>🔄 <b>v${st.version} 파일은 내려받았지만 아직 실행되지 않았습니다</b> — ` +
+      `지금 돌아가는 건 <b>v${st.bootVersion}</b>입니다. ` +
+      `검은 창을 <b>완전히 닫고</b> 바탕화면의 <b>시작하기</b>를 다시 실행해주세요.</span>`;
   }
 
   if (!st.configured) {
@@ -1152,7 +1166,8 @@ $("#version").addEventListener("click", async () => {
   $("#version").textContent = "확인 중...";
   try {
     const u = await api("/api/update");
-    $("#version").textContent = "v" + u.current;
+    const st2 = await api("/api/status").catch(() => null);
+    renderVersion(st2?.version ?? u.current, st2?.bootVersion);
     if (u.remote) {
       $("#updateBar").style.display = "flex";
     } else if (u.error) {

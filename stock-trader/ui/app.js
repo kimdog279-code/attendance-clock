@@ -144,9 +144,32 @@ function selectedEngineStrategy() {
   }
 }
 
+// 증권사가 말하는 '지금 이 종목을 얼마어치 살 수 있나'를 주문 카드에 보여준다.
+// 예수금(정산 반영)과 다를 수 있어서, 주문이 거부되기 전에 미리 알 수 있어야 한다.
+async function loadBuyable() {
+  const el = $("#buyableNote");
+  if (!el) return;
+  try {
+    const limitPrice = document.querySelector('input[name="ordType"]:checked')?.value === "limit"
+      ? Number($("#inPrice").value) || null
+      : null;
+    const b = await api(`/api/buyable?code=${currentCode}${limitPrice ? `&price=${limitPrice}` : ""}`);
+    if (b.amount == null && b.qty == null) {
+      el.textContent = "";
+      return;
+    }
+    el.textContent =
+      `지금 살 수 있는 금액: ${won(b.amount)}원` + (b.qty > 0 ? ` (최대 ${won(b.qty)}주)` : "");
+    el.style.color = "";
+  } catch {
+    el.textContent = "";
+  }
+}
+
 async function refreshAll() {
   loadPrice().catch((e) => ($("#priceSub").textContent = e.message));
   loadBalance().catch((e) => ($("#balanceBox").textContent = e.message));
+  loadBuyable().catch(() => {});
   loadChart().catch(() => {});
 }
 

@@ -101,6 +101,7 @@ const BOOT_VERSION = appVersion();
 
 // ── 자동매매 엔진 관리 (동시 여러 종목) ─────────────────────────
 const MAX_ENGINES = 5;
+const won = (n) => Math.round(Number(n) || 0).toLocaleString("ko-KR");
 const engines = new Map(); // code → { code, live, strategyLabel, running, stop }
 const engineLogs = []; // 모든 엔진의 로그를 한 줄기로 (종목 접두어 포함)
 
@@ -412,6 +413,13 @@ async function handleApi(req, res, pathname, body) {
     };
   }
 
+  // 증권사가 말하는 '지금 이 종목을 얼마어치 살 수 있나'. 화면 표시와 주문 전 확인에 쓴다.
+  if (pathname === "/api/buyable") {
+    const { getBuyableCash } = await import("./api/balance.js");
+    const px = q.get("price") ? Number(q.get("price")) : null;
+    return (await getBuyableCash(code, px && px > 0 ? px : null)) ?? { amount: null, qty: null };
+  }
+
   if (pathname === "/api/order" && req.method === "POST") {
     const { buy, sell } = await import("./api/orders.js");
     const qty = Number(body.qty);
@@ -422,6 +430,26 @@ async function handleApi(req, res, pathname, body) {
       price = Number(body.price);
       if (!Number.isFinite(price) || price <= 0) throw new Error("지정가는 0보다 큰 숫자여야 합니다.");
       price = Math.round(price);
+    }
+    // 예수금은 '정산 반영 후' 금액이라 지금 당장 쓸 수 있는 돈과 다르다.
+    // 주문을 내보내기 전에 증권사에 직접 물어보고, 모자라면 이유를 분명히 알린다.
+    if (body.side !== "sell") {
+      const { getBuyableCash } = await import("./api/balance.js");
+      const b = await getBuyableCash(code, price ?? null);
+      if (b && (b.amount > 0 || b.qty > 0)) {
+        const need = price ? qty * price : null;
+        const overAmount = need != null && b.amount > 0 && need > b.amount;
+        const overQty = b.qty > 0 && qty > b.qty;
+        if (overAmount || overQty) {
+          throw new Error(
+            `지금 살 수 있는 금액을 넘었습니다 — 주문가능금액 ${won(b.amount)}원` +
+              (b.qty > 0 ? ` (최대 ${won(b.qty)}주)` : "") +
+              (need != null ? `, 이번 주문 ${won(need)}원` : "") +
+              `. 예수금이 '정산 반영' 금액이라 실제 쓸 수 있는 돈보다 커 보일 수 있습니다 — ` +
+              `주식을 판 대금은 2영업일 뒤에 들어옵니다.`
+          );
+        }
+      }
     }
     const fn = body.side === "sell" ? sell : buy;
     try {

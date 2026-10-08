@@ -179,6 +179,9 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
   const fourMonthsAgo = new Date(Date.now() - 120 * 24 * 3600 * 1000)
     .toISOString().slice(0, 10).replaceAll("-", "");
   await collectDaily(code, fourMonthsAgo);
+  let lastCollectDate = kst().dateStr; // 일봉을 마지막으로 받은 날
+  let collectRetryAt = 0; // 갱신 실패 시 재시도 시각
+  let staleNotice = null; // 같은 경고를 반복하지 않도록
 
   const { getPrice } = await import("./api/quotations.js");
   const state = loadState(code, live);
@@ -248,6 +251,19 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
 
       const today = kst().dateStr;
 
+      // 날짜가 바뀌면 일봉을 다시 받는다.
+      // 시작할 때 한 번만 받으면, 며칠 돌아가는 동안 '전일 데이터'가 계속 옛날 것이 된다.
+      if (today !== lastCollectDate && Date.now() >= collectRetryAt) {
+        try {
+          log("날짜가 바뀌어 일봉 데이터를 다시 받습니다...");
+          await collectDaily(code, fourMonthsAgo);
+          lastCollectDate = today;
+        } catch (err) {
+          collectRetryAt = Date.now() + 10 * 60 * 1000; // 10분 뒤 재시도
+          log(`일봉 갱신 실패 (10분 뒤 다시 시도, 그동안 이전 데이터로 진행): ${err.message}`);
+        }
+      }
+
       // 실전 자동매매 일일 안전장치
       if (live && config.mode === "real") {
         if (state.dayStats?.date !== today) {
@@ -265,10 +281,24 @@ export async function startEngine({ code, live, stopPromise, strategy, log = con
       }
 
       const history = loadDaily(code).filter((c) => c.date < today);
+      // 일봉이 오래되면 돌파선과 갭업 판정이 엉뚱해진다 — 눈에 보이게 알린다
+      const lastCandle = history[history.length - 1];
+      if (lastCandle) {
+        const ageDays = Math.floor(
+          (Date.parse(`${today.slice(0, 4)}-${today.slice(4, 6)}-${today.slice(6)}`) -
+            Date.parse(`${lastCandle.date.slice(0, 4)}-${lastCandle.date.slice(4, 6)}-${lastCandle.date.slice(6)}`)) /
+            86400000
+        );
+        if (ageDays > 5 && staleNotice !== lastCandle.date) {
+          staleNotice = lastCandle.date;
+          log(`⚠ 일봉 데이터가 ${lastCandle.date}까지뿐입니다 (${ageDays}일 전) — [데이터 수집/갱신]을 눌러주세요.`);
+        }
+      }
       const p = await getPrice(code);
       currentPrice = p.price;
       lastErrorMessage = null; // 시세 조회가 성공했으면 오류 상태 해제
-      const quote = { price: p.price, open: p.open, today };
+      // 전일 종가 = 현재가 - 전일대비. 저장된 일봉보다 항상 정확하다.
+      const quote = { price: p.price, open: p.open, today, prevClose: p.price - p.change };
       const { signal, note, blockRebuyToday } = strat.signalNow(history, quote, state.position, stratParams);
 
       if (note === "데이터 부족") {

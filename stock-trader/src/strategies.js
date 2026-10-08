@@ -230,10 +230,14 @@ export const STRATEGIES = {
       const target = quote.open + p.k * (prev.high - prev.low);
       // 어제(또는 그 전에) 산 포지션은 새 날 첫 확인 때 판정한다
       if (position && position.date && position.date < quote.today) {
-        if (roll && quote.open > prev.close) {
+        // 갭업 판정의 기준은 '진짜 전일 종가'여야 한다.
+        // 저장된 일봉은 갱신이 늦을 수 있어, 증권사 실시간 시세가 주는 전일 종가를 우선 쓴다.
+        // (이게 없으면 며칠 전 종가와 비교해 계속 갭업으로 오판하고 영원히 안 판다)
+        const prevClose = Number.isFinite(quote.prevClose) && quote.prevClose > 0 ? quote.prevClose : prev.close;
+        if (roll && quote.open > prevClose) {
           return {
             signal: null,
-            note: `갭업 출발 (시가 ${kw(quote.open)} > 전일 종가 ${kw(prev.close)}) — 팔지 않고 이월 보유`,
+            note: `갭업 출발 (시가 ${kw(quote.open)} > 전일 종가 ${kw(prevClose)}) — 팔지 않고 이월 보유`,
           };
         }
         return {
